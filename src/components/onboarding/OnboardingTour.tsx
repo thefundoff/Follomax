@@ -14,7 +14,7 @@ const STEPS = [
   {
     emoji: '💳',
     title: 'Add Funds to Your Balance',
-    description: 'Before placing an order, you need to top up your balance. We accept card payments via Korapay. Your balance is available instantly after payment.',
+    description: 'Before placing an order, you need to top up your balance. We accept all payment methods via Korapay. Your balance is available instantly after payment.',
     action: { label: 'Add Funds Now', href: '/funds' },
   },
   {
