@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Package, ShoppingCart, Wallet, TrendingUp, Plus } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { StatsCard } from '@/components/dashboard/StatsCard'
 import { RecentOrdersTable } from '@/components/dashboard/RecentOrdersTable'
@@ -9,9 +11,12 @@ import { formatCurrency, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useAuth } from '@/context/AuthContext'
+import { OnboardingTour, useOnboarding } from '@/components/onboarding/OnboardingTour'
 
 export function DashboardPage() {
   const { profile } = useAuth()
+  const { isDone } = useOnboarding()
+  const [showTour, setShowTour] = useState(() => !isDone())
   const { data: stats, isLoading: statsLoading } = useOrderStats()
   const { data: balance, isLoading: balanceLoading } = useBalance()
 
@@ -20,6 +25,10 @@ export function DashboardPage() {
   const name = profile?.full_name?.split(' ')[0] || 'there'
 
   return (
+    <>
+    <AnimatePresence>
+      {showTour && <OnboardingTour onDismiss={() => setShowTour(false)} />}
+    </AnimatePresence>
     <DashboardLayout>
       <div className="space-y-4 md:space-y-6 max-w-screen-xl">
         {/* Greeting */}
@@ -121,5 +130,6 @@ export function DashboardPage() {
         </div>
       </div>
     </DashboardLayout>
+    </>
   )
 }
