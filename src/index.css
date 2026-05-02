@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Navy color variables ─────────────────────────────────── */
+/* Light mode (default) */
+:root {
+  --navy-900: 241 245 249;   /* #f1f5f9 */
+  --navy-800: 255 255 255;   /* #ffffff */
+  --navy-700: 248 250 252;   /* #f8fafc */
+  --navy-600: 226 232 240;   /* #e2e8f0 */
+  --navy-500: 203 213 225;   /* #cbd5e1 */
+  --navy-400: 148 163 184;   /* #94a3b8 */
+}
+
+/* Dark mode */
+.dark {
+  --navy-900: 13 17 23;      /* #0d1117 */
+  --navy-800: 22 27 34;      /* #161b22 */
+  --navy-700: 28 35 51;      /* #1c2333 */
+  --navy-600: 33 38 45;      /* #21262d */
+  --navy-500: 48 54 61;      /* #30363d */
+  --navy-400: 72 79 88;      /* #484f58 */
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply font-sans bg-navy-900;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark body { color: #f0f6fc; }
+
+  #root { min-height: 100vh; }
+
+  /* ── Text color flips (light mode only) ─────────────────── */
+  /* html:not(.dark) ensures this only fires when dark class is absent from <html> */
+  html:not(.dark) .text-white   { color: #0f172a; }
+  html:not(.dark) .text-gray-100 { color: #1e293b; }
+  html:not(.dark) .text-gray-200 { color: #374151; }
+  html:not(.dark) .text-gray-300 { color: #4b5563; }
+  html:not(.dark) .text-gray-400 { color: #6b7280; }
+  html:not(.dark) .text-gray-500 { color: #9ca3af; }
+  html:not(.dark) .text-gray-600 { color: #d1d5db; }
+
+  /* ── Scrollbar ───────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgb(var(--navy-800)); }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--navy-500)); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #0891d8; }
+
+  /* Hide scrollbar for overflow-x chip rows */
+  .scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+}
+
+@layer components {
+  /* ── Glass card ──────────────────────────────────────────── */
+  .glass-card {
+    background: rgba(28, 35, 51, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(8, 145, 216, 0.15);
+  }
+
+  html:not(.dark) .glass-card {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(8, 145, 216, 0.15);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+  }
+
+  .glass-card-hover {
+    background: rgba(28, 35, 51, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(8, 145, 216, 0.15);
+    transition: all 0.2s ease;
+  }
+
+  html:not(.dark) .glass-card-hover {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(8, 145, 216, 0.15);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+  }
+
+  .glass-card-hover:hover {
+    border-color: rgba(8, 145, 216, 0.4);
+    box-shadow: 0 0 20px rgba(8, 145, 216, 0.2);
+  }
+
+  /* ── Gradient text ───────────────────────────────────────── */
+  .gradient-text {
+    background: linear-gradient(135deg, #22aaf4, #0891d8, #0272b0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Hero gradient ───────────────────────────────────────── */
+  .bg-gradient-hero {
+    background: linear-gradient(135deg, #0d1117 0%, #001d3d 50%, #0d1117 100%);
+  }
+
+  html:not(.dark) .bg-gradient-hero {
+    background: linear-gradient(135deg, #f8fafc 0%, #eff8ff 50%, #f8fafc 100%);
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────── */
+  .btn-primary {
+    @apply bg-brand-500 hover:bg-brand-600 font-semibold px-6 py-2.5 rounded-xl
+           transition-all duration-200 shadow-brand hover:shadow-brand-lg
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    color: #ffffff !important;
+  }
+
+  .btn-secondary {
+    @apply font-semibold px-6 py-2.5 rounded-xl transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background: rgb(var(--navy-700));
+    border: 1px solid rgb(var(--navy-500));
+    color: #6b7280;
+  }
+
+  .dark .btn-secondary {
+    color: #e5e7eb;
+  }
+
+  .btn-secondary:hover {
+    background: rgb(var(--navy-600));
+  }
+
+  /* ── Input field ─────────────────────────────────────────── */
+  .input-field {
+    @apply w-full rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2
+           focus:ring-brand-500/50 focus:border-brand-500/60 transition-all duration-200;
+    background: rgb(var(--navy-700));
+    border: 1px solid rgb(var(--navy-500));
+    color: #0f172a;
+  }
+
+  .dark .input-field {
+    color: #f0f6fc;
+  }
+
+  .input-field::placeholder { color: #94a3b8; }
+  .dark .input-field::placeholder { color: #6b7280; }
+
+  /* ── Status badges ───────────────────────────────────────── */
+  .status-pending    { @apply bg-yellow-500/15 text-yellow-600 border border-yellow-500/30; }
+  .status-processing { @apply bg-blue-500/15 text-blue-600 border border-blue-500/30; }
+  .status-in_progress{ @apply bg-blue-500/15 text-blue-600 border border-blue-500/30; }
+  .status-completed  { @apply bg-green-500/15 text-green-600 border border-green-500/30; }
+  .status-partial    { @apply bg-orange-500/15 text-orange-600 border border-orange-500/30; }
+  .status-cancelled  { @apply bg-gray-500/15 text-gray-500 border border-gray-500/30; }
+  .status-error      { @apply bg-red-500/15 text-red-600 border border-red-500/30; }
+
+  .dark .status-pending    { @apply text-yellow-400; }
+  .dark .status-processing { @apply text-blue-400; }
+  .dark .status-in_progress{ @apply text-blue-400; }
+  .dark .status-completed  { @apply text-green-400; }
+  .dark .status-partial    { @apply text-orange-400; }
+  .dark .status-cancelled  { @apply text-gray-400; }
+  .dark .status-error      { @apply text-red-400; }
+}

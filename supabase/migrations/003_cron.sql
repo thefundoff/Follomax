@@ -1,0 +1,22 @@
+-- =============================================
+-- Follomax - pg_cron setup for order status polling
+-- Run AFTER deploying check-order-status edge function
+-- Replace YOUR_PROJECT_REF and YOUR_SERVICE_ROLE_KEY with actual values
+-- =============================================
+
+-- Enable pg_cron (run in Supabase dashboard SQL editor)
+-- SELECT cron.schedule(
+--   'check-order-status',
+--   '*/5 * * * *',
+--   $$
+--   SELECT
+--     net.http_post(
+--       url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/check-order-status',
+--       headers := jsonb_build_object(
+--         'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY',
+--         'Content-Type', 'application/json'
+--       ),
+--       body := '{}'::jsonb
+--     ) AS request_id;
+--   $$
+-- );
