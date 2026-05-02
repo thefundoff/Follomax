@@ -16,6 +16,8 @@ const STATUS_MAP: Record<string, string> = {
   'Cancelled': 'cancelled',
 }
 
+const CANCELLED_STATUSES = new Set(['Canceled', 'Cancelled', 'Error'])
+
 function getAdminClient() {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -47,6 +49,30 @@ async function callExoBooster(
   return res.json()
 }
 
+async function issueRefund(
+  adminClient: ReturnType<typeof getAdminClient>,
+  userId: string,
+  orderId: string,
+  amount: number,
+  description: string
+) {
+  const { data: profile } = await adminClient
+    .from('profiles').select('balance').eq('id', userId).single()
+  if (!profile || amount < 0.0001) return
+  const balBefore = profile.balance
+  const balAfter = balBefore + amount
+  await adminClient.from('profiles').update({ balance: balAfter }).eq('id', userId)
+  await adminClient.from('transactions').insert({
+    user_id: userId,
+    type: 'refund',
+    amount,
+    balance_before: balBefore,
+    balance_after: balAfter,
+    reference_id: orderId,
+    description,
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders })
 
@@ -55,14 +81,17 @@ Deno.serve(async (req) => {
     const apiKey = await getSetting(adminClient, 'exobooster_api_key')
     const apiUrl = await getSetting(adminClient, 'exobooster_api_url')
 
-    // ── Part 1: Status check for regular orders + drip feed orders on their final run ──
-    // Exclude in_progress drip feed orders — those are still mid-schedule and their
-    // current exobooster_order_id only reflects one run, not the whole order.
+    // ── Part 1: Status check ──────────────────────────────────────────────────
+    // Check:
+    //   - All pending/processing orders
+    //   - in_progress orders where drip_next_run_at IS NULL (all runs submitted,
+    //     waiting for final ExoBooster status — fixes TikTok stuck-at-in_progress bug)
     const { data: orders } = await adminClient
       .from('orders')
-      .select('id, user_id, exobooster_order_id, quantity, charge, status, is_drip_feed')
-      .in('status', ['pending', 'processing'])
+      .select('id, user_id, exobooster_order_id, quantity, charge, status, is_drip_feed, drip_runs_done, drip_runs_total')
+      .in('status', ['pending', 'processing', 'in_progress'])
       .not('exobooster_order_id', 'is', null)
+      .or('is_drip_feed.eq.false,drip_next_run_at.is.null')
       .limit(100)
 
     let updated = 0
@@ -93,41 +122,23 @@ Deno.serve(async (req) => {
         }).eq('id', order.id)
 
         if ((newStatus === 'partial' || newStatus === 'cancelled') && remains && remains > 0) {
-          const refundAmount = (remains / 1000) * (order.charge / order.quantity) * 1000
-          if (refundAmount > 0.001) {
-            const { data: profile } = await adminClient
-              .from('profiles')
-              .select('balance')
-              .eq('id', order.user_id)
-              .single()
-
-            if (profile) {
-              const balanceBefore = profile.balance
-              const balanceAfter = balanceBefore + refundAmount
-              await adminClient.from('profiles').update({ balance: balanceAfter }).eq('id', order.user_id)
-              await adminClient.from('transactions').insert({
-                user_id: order.user_id,
-                type: 'refund',
-                amount: refundAmount,
-                balance_before: balanceBefore,
-                balance_after: balanceAfter,
-                reference_id: order.id,
-                description: `Partial refund for order #${order.id.slice(0, 8)}`,
-              })
-            }
-          }
+          const refundAmount = Math.round((remains / order.quantity) * order.charge * 10000) / 10000
+          await issueRefund(
+            adminClient, order.user_id, order.id, refundAmount,
+            `Refund for order #${order.id.slice(0, 8)} — ${remains} undelivered`
+          )
         }
 
         updated++
       }
     }
 
-    // ── Part 2: Submit due Organix (drip feed) runs ──
+    // ── Part 2: Submit due Organix (drip feed) runs ───────────────────────────
     const now = new Date().toISOString()
 
     const { data: dripOrders } = await adminClient
       .from('orders')
-      .select('id, user_id, service_id, link, drip_quantity, drip_interval, drip_runs_done, drip_runs_total, drip_next_run_at, exobooster_order_id')
+      .select('id, user_id, service_id, link, charge, drip_quantity, drip_interval, drip_runs_done, drip_runs_total, drip_next_run_at, exobooster_order_id')
       .eq('is_drip_feed', true)
       .eq('status', 'in_progress')
       .lte('drip_next_run_at', now)
@@ -135,6 +146,45 @@ Deno.serve(async (req) => {
       .limit(50)
 
     for (const dripOrder of dripOrders ?? []) {
+
+      // ── Check if the previous run was cancelled before submitting the next ──
+      // Fixes: Facebook runs cancelled → no refund, order stuck at in_progress
+      if (dripOrder.exobooster_order_id && (dripOrder.drip_runs_done ?? 0) > 0) {
+        const prevResults = await callExoBooster(apiKey, apiUrl, {
+          action: 'status',
+          orders: String(dripOrder.exobooster_order_id),
+        }) as Record<string, { status: string }>
+
+        const prevStatus = prevResults[String(dripOrder.exobooster_order_id)]?.status
+
+        if (prevStatus && CANCELLED_STATUSES.has(prevStatus)) {
+          // Previous run was cancelled — stop the order and refund remaining runs
+          const runsDone = dripOrder.drip_runs_done ?? 0
+          const runsTotal = dripOrder.drip_runs_total ?? 0
+          // +1 because the cancelled run (counted in runsDone) delivered nothing
+          const undeliveredRuns = Math.max(0, runsTotal - runsDone + 1)
+          const chargePerRun = runsTotal > 0 ? (dripOrder.charge ?? 0) / runsTotal : 0
+          const refundAmount = Math.round(undeliveredRuns * chargePerRun * 10000) / 10000
+
+          if (refundAmount > 0.001) {
+            await issueRefund(
+              adminClient, dripOrder.user_id, dripOrder.id, refundAmount,
+              `Organix refund: ${undeliveredRuns} run(s) cancelled by provider on order #${dripOrder.id.slice(0, 8)}`
+            )
+          }
+
+          await adminClient.from('orders').update({
+            status: runsDone > 1 ? 'partial' : 'cancelled',
+            drip_next_run_at: null,
+            error_message: `Run ${runsDone} was cancelled by the provider. ${undeliveredRuns} run(s) refunded.`,
+          }).eq('id', dripOrder.id)
+
+          console.log(`Organix cancelled at run ${runsDone}/${runsTotal} for order ${dripOrder.id}, refunded ${undeliveredRuns} run(s)`)
+          continue
+        }
+      }
+
+      // ── Submit next run ───────────────────────────────────────────────────────
       const { data: service } = await adminClient
         .from('services')
         .select('exobooster_id')
@@ -160,9 +210,7 @@ Deno.serve(async (req) => {
 
         await adminClient.from('orders').update({
           drip_runs_done: newRunsDone,
-          // Track the latest run's ExoBooster ID so the status check above can finalise it
           exobooster_order_id: result.order ?? dripOrder.exobooster_order_id,
-          // On the last run: null out next_run_at and move to 'processing' so Part 1 picks it up
           drip_next_run_at: isLastRun ? null : new Date(Date.now() + dripOrder.drip_interval * 60 * 60 * 1000).toISOString(),
           status: isLastRun ? 'processing' : 'in_progress',
         }).eq('id', dripOrder.id)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Search, ExternalLink, Info, Repeat } from 'lucide-react'
+import { RefreshCw, Search, ExternalLink, Info, Repeat, Copy, Check } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useOrders } from '@/hooks/useOrders'
@@ -21,6 +21,7 @@ export function OrdersPage() {
   const [page, setPage] = useState(1)
   const [detailOrder, setDetailOrder] = useState<OrderWithService | null>(null)
 
+  const [copiedId, setCopiedId] = useState(false)
   const { data, isLoading, refetch, isFetching } = useOrders({ status, search, page })
   const totalPages = data ? Math.ceil(data.total / 20) : 0
 
@@ -199,7 +200,20 @@ export function OrdersPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ['Order ID', detailOrder.id.slice(0, 8) + '...'],
+                  ['Order ID', (
+                    <button
+                      key="oid"
+                      onClick={() => {
+                        navigator.clipboard.writeText(detailOrder.id)
+                        setCopiedId(true)
+                        setTimeout(() => setCopiedId(false), 2000)
+                      }}
+                      className="flex items-center gap-1.5 group"
+                    >
+                      <span className="font-mono text-xs">{detailOrder.id.slice(0, 8)}…</span>
+                      {copiedId ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-gray-500 group-hover:text-brand-400 transition-colors" />}
+                    </button>
+                  )],
                   ['ID', detailOrder.exobooster_order_id || 'Pending'],
                   ['Service', detailOrder.services?.name || 'Unknown'],
                   ['Status', <StatusBadge key="s" status={detailOrder.status} />],

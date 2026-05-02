@@ -24,6 +24,8 @@ import { AdminServicesPage } from '@/pages/admin/AdminServicesPage'
 import { AdminOrdersPage } from '@/pages/admin/AdminOrdersPage'
 import { AdminTransactionsPage } from '@/pages/admin/AdminTransactionsPage'
 import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage'
+import { AdminSupportPage } from '@/pages/admin/AdminSupportPage'
+import { SupportPage } from '@/pages/SupportPage'
 
 function NotFound() {
   return (
@@ -55,6 +57,7 @@ export default function App() {
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/funds" element={<AddFundsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/support" element={<SupportPage />} />
             </Route>
 
             <Route element={<MerchantGuard />}>
@@ -69,6 +72,7 @@ export default function App() {
               <Route path="/admin/orders" element={<AdminOrdersPage />} />
               <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
               <Route path="/admin/settings" element={<AdminSettingsPage />} />
+              <Route path="/admin/support" element={<AdminSupportPage />} />
             </Route>
 
             <Route path="/404" element={<NotFound />} />

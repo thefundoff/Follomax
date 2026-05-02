@@ -2,7 +2,7 @@ import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet, User, Settings,
-  LogOut, Users, BarChart3, DollarSign, ChevronLeft, ChevronRight, Store, X, Zap,
+  LogOut, Users, BarChart3, DollarSign, ChevronLeft, ChevronRight, Store, X, Zap, MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -14,6 +14,7 @@ const userNav = [
   { to: '/orders', icon: Package, label: 'My Orders' },
   { to: '/funds', icon: Wallet, label: 'Add Funds' },
   { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/support', icon: MessageSquare, label: 'Support' },
 ]
 
 const merchantNav = [
@@ -27,6 +28,7 @@ const adminNav = [
   { to: '/admin/services', icon: Zap, label: 'Services' },
   { to: '/admin/orders', icon: Package, label: 'Orders' },
   { to: '/admin/transactions', icon: DollarSign, label: 'Transactions' },
+  { to: '/admin/support', icon: MessageSquare, label: 'Support' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
 ]
 
