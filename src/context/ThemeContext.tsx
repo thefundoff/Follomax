@@ -7,11 +7,11 @@ interface ThemeContextValue {
   toggleTheme: () => void
 }
 
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'light', toggleTheme: () => {} })
+const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggleTheme: () => {} })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('follomax-theme') as Theme) || 'light'
+    return (localStorage.getItem('follomax-theme') as Theme) || 'dark'
   })
 
   useEffect(() => {
