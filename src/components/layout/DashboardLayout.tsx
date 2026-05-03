@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { SocialProof } from '@/components/ui/SocialProof'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -19,6 +20,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           {children}
         </main>
       </div>
+      <SocialProof />
     </div>
   )
 }
