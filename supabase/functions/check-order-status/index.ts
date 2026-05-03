@@ -14,9 +14,12 @@ const STATUS_MAP: Record<string, string> = {
   'Partial': 'partial',
   'Canceled': 'cancelled',
   'Cancelled': 'cancelled',
+  'Error': 'error',
+  'Fail': 'error',
+  'Failed': 'error',
 }
 
-const CANCELLED_STATUSES = new Set(['Canceled', 'Cancelled', 'Error'])
+const CANCELLED_STATUSES = new Set(['Canceled', 'Cancelled', 'Error', 'Fail', 'Failed'])
 
 function getAdminClient() {
   return createClient(
@@ -121,7 +124,14 @@ Deno.serve(async (req) => {
           remains,
         }).eq('id', order.id)
 
-        if ((newStatus === 'partial' || newStatus === 'cancelled') && remains && remains > 0) {
+        if (newStatus === 'error') {
+          // Full refund — order errored, nothing delivered
+          const refundAmount = Math.round(order.charge * 10000) / 10000
+          await issueRefund(
+            adminClient, order.user_id, order.id, refundAmount,
+            `Full refund for order #${order.id.slice(0, 8)} — order failed`
+          )
+        } else if ((newStatus === 'partial' || newStatus === 'cancelled') && remains && remains > 0) {
           const refundAmount = Math.round((remains / order.quantity) * order.charge * 10000) / 10000
           await issueRefund(
             adminClient, order.user_id, order.id, refundAmount,
