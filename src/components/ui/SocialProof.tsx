@@ -37,6 +37,24 @@ const NAMES = [
   'Emil A.', 'Chisom W.', 'Noel R.', 'Tamara J.', 'Bakari N.', 'Astrid C.',
   'Matteo P.', 'Adanna I.', 'Tobias V.', 'Fiona E.', 'Segun L.', 'Margot B.',
   'Reuben O.', 'Zuri F.', 'Clement H.', 'Nadia M.', 'Ifeanyi T.', 'Cora S.',
+  // Nigerian names
+  'Adewale B.', 'Chidinma O.', 'Emeka J.', 'Folake A.', 'Tunde S.', 'Amaka E.',
+  'Segun L.', 'Ngozi C.', 'Biodun F.', 'Adaeze N.', 'Femi O.', 'Ifeoma U.',
+  'Bola T.', 'Chukwuemeka A.', 'Yetunde K.', 'Obinna M.', 'Kemi R.', 'Nnamdi P.',
+  'Taiwo G.', 'Chinwe B.', 'Dele I.', 'Onyeka D.', 'Ronke W.', 'Chinedu S.',
+  'Wale F.', 'Adunola J.', 'Jide C.', 'Ifunanya O.', 'Tobi A.', 'Oluchi N.',
+  'Gbemi E.', 'Uchenna T.', 'Sade M.', 'Obi L.', 'Toyin H.', 'Ezinne K.',
+  'Abubakar D.', 'Halima Y.', 'Usman R.', 'Zainab Q.', 'Musa J.', 'Hauwa P.',
+  'Suleiman A.', 'Maryam B.', 'Ibrahim C.', 'Aisha F.', 'Yusuf G.', 'Fatima I.',
+  'Funke N.', 'Nkechi V.', 'Kehinde W.', 'Precious Z.', 'Ade O.', 'Blessing T.',
+  'Joke M.', 'Ebuka S.', 'Lola C.', 'Chidi R.', 'Bisi K.', 'Adaora F.',
+  'Damilola J.', 'Chiamaka E.', 'Rotimi A.', 'Tobenna U.', 'Shade P.', 'Uche N.',
+  'Kunle B.', 'Oghenekaro D.', 'Yinka T.', 'Chioma W.', 'Rasheed O.', 'Adeola M.',
+  'Tope I.', 'Kenechukwu A.', 'Moyosore C.', 'Somtochukwu L.', 'Gbenga F.', 'Adaeze R.',
+  'Bolaji S.', 'Chinonso E.', 'Bukola J.', 'Ikenna G.', 'Modupe K.', 'Ekene H.',
+  'Olumide N.', 'Chizaram T.', 'Titilayo B.', 'Obafemi A.', 'Nneka D.', 'Lanre V.',
+  'Pelumi O.', 'Uzochukwu F.', 'Dupe C.', 'Nonso M.', 'Bisola E.', 'Ejike P.',
+  'Feranmi K.', 'Ndidi W.', 'Oluwafemi S.', 'Amarachi J.', 'Temitope A.', 'Chukwudi O.',
 ]
 
 // Fallback services used before DB loads
