@@ -29,6 +29,13 @@ async function getSetting(supabase: ReturnType<typeof getAdminClient>, key: stri
   return (data?.value as string) || ''
 }
 
+function jsonResponse(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders })
 
@@ -36,37 +43,15 @@ Deno.serve(async (req) => {
     const adminClient = getAdminClient()
     const userId = await getUserFromJWT(req.headers.get('Authorization'))
 
-    if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!userId) return jsonResponse({ error: 'Unauthorized' }, 401)
 
     const { reference, amount } = await req.json()
 
-    if (!reference || !amount) {
-      return new Response(JSON.stringify({ error: 'Missing reference or amount' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!reference || !amount) return jsonResponse({ error: 'Missing reference or amount' }, 400)
 
-    // Idempotency: check if this reference was already processed
-    const { data: existing } = await adminClient
-      .from('deposit_requests')
-      .select('id, status')
-      .eq('flw_tx_ref', reference)
-      .single()
-
-    if (existing?.status === 'approved') {
-      return new Response(JSON.stringify({ success: true, already_processed: true }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Verify payment with Korapay API
+    // Verify the payment with Korapay API — use only the server-verified amount, never the client-supplied amount
     const secretKey = await getSetting(adminClient, 'korapay_secret_key')
-    let verified = false
-    let verifiedAmount = amount
+    let verifiedAmount = 0
 
     if (secretKey) {
       try {
@@ -76,84 +61,119 @@ Deno.serve(async (req) => {
         )
         if (res.ok) {
           const data = await res.json()
-          const status = data?.data?.status
-          const returnedAmount = data?.data?.amount ?? 0
-          verified = status === 'success'
-          verifiedAmount = returnedAmount
+          if (data?.data?.status === 'success') {
+            verifiedAmount = data?.data?.amount ?? 0
+          }
         }
       } catch (err) {
         console.error('Korapay verify error:', err)
       }
     }
 
-    if (!verified) {
-      return new Response(JSON.stringify({ error: 'Payment could not be verified with Korapay' }), {
-        status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (verifiedAmount === 0) {
+      return jsonResponse({ error: 'Payment could not be verified with Korapay' }, 402)
     }
 
-    // Get user profile
+    // Atomically claim the pending deposit by updating it to 'approved' in one DB round-trip.
+    // The WHERE status='pending' condition means only the first concurrent caller wins —
+    // the second will get no rows back and take the already-processed path.
+    const { data: claimed } = await adminClient
+      .from('deposit_requests')
+      .update({
+        status: 'approved',
+        amount: verifiedAmount,
+        flw_tx_id: reference,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('flw_tx_ref', reference)
+      .eq('status', 'pending')
+      .eq('user_id', userId)
+      .select('id')
+      .single()
+
+    let depositId: string
+
+    if (claimed) {
+      depositId = claimed.id
+    } else {
+      // No pending deposit was claimed — check why
+      const { data: existing } = await adminClient
+        .from('deposit_requests')
+        .select('id, status, user_id')
+        .eq('flw_tx_ref', reference)
+        .single()
+
+      if (existing?.status === 'approved') {
+        // Webhook or a concurrent verify-payment call already processed this
+        return jsonResponse({ success: true, already_processed: true }, 200)
+      }
+
+      // Security: don't reveal whether a reference belongs to another user
+      if (existing && existing.user_id !== userId) {
+        return jsonResponse({ error: 'Payment reference not found' }, 404)
+      }
+
+      // No pre-created deposit exists (frontend failed to create one) — insert it now
+      const { data: newDeposit, error: insertError } = await adminClient
+        .from('deposit_requests')
+        .insert({
+          user_id: userId,
+          amount: verifiedAmount,
+          method: 'korapay',
+          flw_tx_ref: reference,
+          flw_tx_id: reference,
+          status: 'approved',
+          reviewed_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+
+      if (!newDeposit || insertError) {
+        // Insert failed — unique constraint means a concurrent call just beat us to it
+        const { data: race } = await adminClient
+          .from('deposit_requests')
+          .select('status')
+          .eq('flw_tx_ref', reference)
+          .single()
+        if (race?.status === 'approved') {
+          return jsonResponse({ success: true, already_processed: true }, 200)
+        }
+        console.error('Failed to record deposit:', insertError)
+        return jsonResponse({ error: 'Failed to record deposit' }, 500)
+      }
+
+      depositId = newDeposit.id
+    }
+
+    // Credit the balance
     const { data: profile } = await adminClient
       .from('profiles')
       .select('balance')
       .eq('id', userId)
       .single()
 
-    if (!profile) {
-      return new Response(JSON.stringify({ error: 'User profile not found' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!profile) return jsonResponse({ error: 'User profile not found' }, 404)
 
-    const creditAmount = amount
     const balanceBefore = profile.balance
-    const balanceAfter = balanceBefore + creditAmount
+    const balanceAfter = balanceBefore + verifiedAmount
 
-    // Upsert deposit_request
-    const { data: deposit } = await adminClient
-      .from('deposit_requests')
-      .upsert({
-        ...(existing?.id ? { id: existing.id } : {}),
-        user_id: userId,
-        amount: creditAmount,
-        method: 'korapay',
-        flw_tx_ref: reference,
-        flw_tx_id: reference,
-        status: 'approved',
-        reviewed_at: new Date().toISOString(),
-      }, { onConflict: 'flw_tx_ref' })
-      .select('id')
-      .single()
-
-    if (!deposit) {
-      return new Response(JSON.stringify({ error: 'Failed to record deposit' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Credit balance
     await adminClient.from('profiles').update({ balance: balanceAfter }).eq('id', userId)
 
-    // Record transaction
     await adminClient.from('transactions').insert({
       user_id: userId,
       type: 'deposit',
-      amount: creditAmount,
+      amount: verifiedAmount,
       balance_before: balanceBefore,
       balance_after: balanceAfter,
-      reference_id: deposit.id,
+      reference_id: depositId,
       description: `Deposit via Korapay (${reference})`,
       status: 'completed',
     })
 
-    return new Response(JSON.stringify({ success: true, new_balance: balanceAfter }), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ success: true, new_balance: balanceAfter }, 200)
 
   } catch (err) {
     console.error('verify-payment error:', err)
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: err instanceof Error ? err.message : 'Internal error' }, 500)
   }
 })

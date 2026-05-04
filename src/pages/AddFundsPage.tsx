@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
 import { Wallet, CreditCard, ArrowUpRight, Clock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { motion } from 'framer-motion'
@@ -72,7 +73,7 @@ export function AddFundsPage() {
     }, 3000)
   }, [qc, profile?.id])
 
-  const handlePay = () => {
+  const handlePay = async () => {
     if (!KORAPAY_PUBLIC_KEY) {
       toast.error('Korapay is not configured yet. Contact support.')
       return
@@ -89,6 +90,20 @@ export function AddFundsPage() {
 
     setIsPaying(true)
     const ref = txRef.current
+
+    // Pre-create a pending deposit record so the server-side webhook can process it
+    // as a backup if the browser-side verify-payment call fails (e.g. tab closed).
+    const { error: depositError } = await supabase.from('deposit_requests').insert({
+      user_id: profile!.id,
+      amount,
+      method: 'korapay',
+      flw_tx_ref: ref,
+      status: 'pending',
+    })
+    if (depositError) {
+      // Non-fatal: verify-payment will create the record on success if this failed.
+      console.error('Pre-create deposit failed:', depositError)
+    }
 
     korapay.initialize({
       key: KORAPAY_PUBLIC_KEY,

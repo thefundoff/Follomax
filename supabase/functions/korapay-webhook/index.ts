@@ -46,7 +46,6 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders })
 
   try {
-    const adminClient = getAdminClient()
     const payload = await req.json()
 
     if (payload.event !== 'charge.success') {
@@ -58,8 +57,11 @@ Deno.serve(async (req) => {
       return new Response('OK', { status: 200, headers: corsHeaders })
     }
 
-    // Verify payment directly with Korapay API
+    const adminClient = getAdminClient()
     const secretKey = await getSetting(adminClient, 'korapay_secret_key')
+
+    // Confirm the payment actually succeeded by asking Korapay's API directly.
+    // This is the primary trust check — we never rely solely on the webhook payload.
     const { valid, amount } = await verifyWithKorapay(secretKey, reference)
 
     if (!valid) {
@@ -67,19 +69,27 @@ Deno.serve(async (req) => {
       return new Response('OK', { status: 200, headers: corsHeaders })
     }
 
-    // Find the pending deposit request
+    // Atomically claim the pending deposit — only one concurrent caller (webhook or
+    // verify-payment) can win this UPDATE. If the row is already 'approved', this
+    // returns no rows and we skip without double-crediting.
     const { data: deposit } = await adminClient
       .from('deposit_requests')
-      .select('*')
+      .update({
+        status: 'approved',
+        flw_tx_id: reference,
+        reviewed_at: new Date().toISOString(),
+      })
       .eq('flw_tx_ref', reference)
       .eq('status', 'pending')
+      .select('id, user_id, amount')
       .single()
 
     if (!deposit) {
+      // Already processed by verify-payment or a prior webhook delivery
       return new Response('OK', { status: 200, headers: corsHeaders })
     }
 
-    // Verify amount matches (allow ₦1 tolerance)
+    // Verify amount matches (allow ₦1 tolerance) — mark failed if mismatch
     if (Math.abs(deposit.amount - amount) > 1) {
       await adminClient
         .from('deposit_requests')
@@ -117,15 +127,6 @@ Deno.serve(async (req) => {
       description: `Deposit via Korapay (${reference})`,
       status: 'completed',
     })
-
-    await adminClient
-      .from('deposit_requests')
-      .update({
-        status: 'approved',
-        flw_tx_id: reference,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq('id', deposit.id)
 
     return new Response('OK', { status: 200, headers: corsHeaders })
 
