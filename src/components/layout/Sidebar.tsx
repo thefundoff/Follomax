@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { useOpenSupportCount, useHasUnreadReply } from '@/hooks/useSupport'
 import { useState } from 'react'
 
 const userNav = [
@@ -42,6 +43,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
 
+  const { data: openSupportCount = 0 } = useOpenSupportCount()
+  const { data: hasUnreadReply = false } = useHasUnreadReply()
+
   const handleSignOut = async () => {
     await signOut()
     navigate('/login')
@@ -77,7 +81,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               )}
             >
               <Icon size={18} className="flex-shrink-0" />
-              {showLabels && <span className="truncate">{label}</span>}
+              {showLabels && <span className="truncate flex-1">{label}</span>}
+              {to === '/support' && !isAdmin && hasUnreadReply && (
+                <span className="w-2 h-2 rounded-full bg-green-500 ring-2 ring-green-500/30 animate-pulse flex-shrink-0" />
+              )}
             </NavLink>
           ))}
 
@@ -125,7 +132,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                   )}
                 >
                   <Icon size={18} className="flex-shrink-0" />
-                  {showLabels && <span className="truncate">{label}</span>}
+                  {showLabels && <span className="truncate flex-1">{label}</span>}
+                  {to === '/admin/support' && openSupportCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-red-500 ring-2 ring-red-500/30 animate-pulse flex-shrink-0" />
+                  )}
                 </NavLink>
               ))}
             </>

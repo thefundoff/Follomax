@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatDateTime } from '@/lib/utils'
-import { useMyTickets, useCreateTicket, CATEGORY_LABELS, STATUS_LABELS } from '@/hooks/useSupport'
+import { useMyTickets, useCreateTicket, CATEGORY_LABELS, STATUS_LABELS, useHasUnreadReply } from '@/hooks/useSupport'
 import type { SupportTicket } from '@/hooks/useSupport'
 import { useOrders } from '@/hooks/useOrders'
 
@@ -96,6 +96,13 @@ export function SupportPage() {
   const { data: tickets, isLoading } = useMyTickets()
   const { mutateAsync: createTicket } = useCreateTicket()
   const { data: ordersData } = useOrders({ status: 'all', search: '', page: 1 })
+  const { refetch: refetchUnread } = useHasUnreadReply()
+
+  // Clear the green dot as soon as the user opens this page
+  useEffect(() => {
+    localStorage.setItem('support_last_viewed', new Date().toISOString())
+    refetchUnread()
+  }, [refetchUnread])
   const [submitted, setSubmitted] = useState(false)
 
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({

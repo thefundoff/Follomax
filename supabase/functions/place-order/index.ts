@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     // Get user profile
     const { data: profile } = await adminClient
       .from('profiles')
-      .select('balance, total_spent, role')
+      .select('balance, total_spent, role, merchant_id')
       .eq('id', userId)
       .single()
 
@@ -284,6 +284,33 @@ Deno.serve(async (req) => {
             balance_after: cbBalanceAfter,
             reference_id: order.id,
             description: `10% cashback on order #${order.id.slice(0, 8)} - ${service.name}`,
+          })
+        }
+      }
+    }
+
+    // 5% referral commission to the merchant who referred this user
+    if (profile.merchant_id) {
+      const referralCommission = Math.round(charge * 0.05 * 10000) / 10000
+      if (referralCommission > 0.0001) {
+        const { data: merchant } = await adminClient
+          .from('profiles')
+          .select('balance')
+          .eq('id', profile.merchant_id)
+          .single()
+
+        if (merchant) {
+          const mBalanceBefore = merchant.balance
+          const mBalanceAfter = mBalanceBefore + referralCommission
+          await adminClient.from('profiles').update({ balance: mBalanceAfter }).eq('id', profile.merchant_id)
+          await adminClient.from('transactions').insert({
+            user_id: profile.merchant_id,
+            type: 'merchant_commission',
+            amount: referralCommission,
+            balance_before: mBalanceBefore,
+            balance_after: mBalanceAfter,
+            reference_id: order.id,
+            description: `5% referral commission on order #${order.id.slice(0, 8)} - ${service.name}`,
           })
         }
       }

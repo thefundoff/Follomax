@@ -68,6 +68,41 @@ export function useCreateTicket() {
   })
 }
 
+// ── Notification hooks ───────────────────────────────────────────────────────
+
+// Returns true if the user has any ticket with a new reply since they last viewed the support page
+export function useHasUnreadReply() {
+  return useQuery({
+    queryKey: ['unread-support-reply'],
+    queryFn: async () => {
+      const lastViewed = localStorage.getItem('support_last_viewed') ?? '1970-01-01T00:00:00Z'
+      const { data } = await supabase
+        .from('support_tickets')
+        .select('id')
+        .not('admin_reply', 'is', null)
+        .gt('replied_at', lastViewed)
+        .limit(1)
+      return (data?.length ?? 0) > 0
+    },
+    refetchInterval: 30000,
+  })
+}
+
+// Returns count of open tickets — used by admin sidebar red dot
+export function useOpenSupportCount() {
+  return useQuery({
+    queryKey: ['open-support-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('support_tickets')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+      return count ?? 0
+    },
+    refetchInterval: 20000,
+  })
+}
+
 // ── Admin hooks ─────────────────────────────────────────────────────────────
 
 export function useAdminTickets(status?: string) {
