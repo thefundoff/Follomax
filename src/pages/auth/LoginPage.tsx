@@ -11,9 +11,14 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { getLockoutRemaining, setLockout, clearFailedAttempts, formatLockout } from '@/lib/validation'
 
 const noScript = (val: string) => !/<|>|javascript:|on\w+\s*=|script/i.test(val)
 
+// Login keeps lenient email validation on purpose: the strict TLD check belongs
+// at sign-up (to block junk like ".vmail"). Applying it here could lock out
+// existing users whose valid-but-uncommon TLD isn't in the allowlist — and
+// invalid credentials are already rejected by Supabase regardless.
 const schema = z.object({
   email: z.string().email('Invalid email address').refine(noScript, 'Invalid input'),
   password: z.string().min(6, 'Password must be at least 6 characters').refine(noScript, 'Invalid input'),
@@ -25,22 +30,83 @@ export function LoginPage() {
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
+  const [lockoutMs, setLockoutMs] = useState(() => getLockoutRemaining())
 
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true })
   }, [user, navigate])
 
+  // Tick down the lockout countdown while the form is locked.
+  useEffect(() => {
+    if (lockoutMs <= 0) return
+    const id = setInterval(() => {
+      const remaining = getLockoutRemaining()
+      setLockoutMs(remaining)
+      if (remaining <= 0) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [lockoutMs])
+
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
 
+  const isLocked = lockoutMs > 0
+
   const onSubmit = async ({ email, password }: FormData) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      toast.error(error.message)
-    } else {
-      navigate('/dashboard')
+    const remaining = getLockoutRemaining()
+    if (remaining > 0) {
+      setLockoutMs(remaining)
+      toast.error(`Too many failed attempts. Try again in ${formatLockout(remaining)}.`)
+      return
     }
+
+    // Authenticate through the secure-login edge function, which enforces the
+    // 3-strikes / 15-minute lockout server-side, then install the session.
+    let data: { access_token?: string; refresh_token?: string; error?: string; locked?: boolean; code?: string; retry_after_seconds?: number }
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secure-login`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY as string}`,
+          },
+          body: JSON.stringify({ email, password }),
+        }
+      )
+      data = await res.json()
+
+      if (!res.ok) {
+        if (data.code === 'email_not_confirmed') {
+          toast.error('Please confirm your email first — check your inbox for the link.')
+          return
+        }
+        if (data.locked && data.retry_after_seconds) {
+          const ms = data.retry_after_seconds * 1000
+          setLockout(ms)
+          setLockoutMs(ms)
+        }
+        toast.error(data.error || 'Invalid email or password')
+        return
+      }
+    } catch {
+      toast.error('Login failed. Please try again.')
+      return
+    }
+
+    const { error } = await supabase.auth.setSession({
+      access_token: data.access_token!,
+      refresh_token: data.refresh_token!,
+    })
+    if (error) {
+      toast.error('Login failed. Please try again.')
+      return
+    }
+    clearFailedAttempts()
+    navigate('/dashboard')
   }
 
   return (
@@ -94,8 +160,20 @@ export function LoginPage() {
               {...register('password')}
             />
 
-            <Button type="submit" className="w-full" size="lg" isLoading={isSubmitting}>
-              Sign In
+            <div className="text-right -mt-1">
+              <Link to="/forgot-password" className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+                Forgot password?
+              </Link>
+            </div>
+
+            {isLocked && (
+              <p className="text-center text-sm text-red-400">
+                Too many failed attempts. Try again in {formatLockout(lockoutMs)}.
+              </p>
+            )}
+
+            <Button type="submit" className="w-full" size="lg" isLoading={isSubmitting} disabled={isLocked}>
+              {isLocked ? `Locked (${formatLockout(lockoutMs)})` : 'Sign In'}
             </Button>
           </form>
 

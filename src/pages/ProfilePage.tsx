@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { User, Key, Copy, RefreshCw, Eye, EyeOff, Check } from 'lucide-react'
+import { User, Key, Copy, RefreshCw, Eye, EyeOff, Check, Lock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { motion } from 'framer-motion'
+import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useProfile, useUpdateProfile, useRegenerateApiKey } from '@/hooks/useProfile'
 import { Card } from '@/components/ui/Card'
@@ -18,17 +19,35 @@ const schema = z.object({
 })
 type FormData = z.infer<typeof schema>
 
+const passwordSchema = z.object({
+  current_password: z.string().min(1, 'Enter your current password'),
+  new_password: z.string().min(8, 'Password must be at least 8 characters'),
+  confirm_password: z.string(),
+}).refine(d => d.new_password === d.confirm_password, {
+  message: 'Passwords do not match',
+  path: ['confirm_password'],
+})
+type PasswordData = z.infer<typeof passwordSchema>
+
 export function ProfilePage() {
   const { data: profile, isLoading } = useProfile()
   const { mutateAsync: updateProfile, isPending: isUpdating } = useUpdateProfile()
   const { mutateAsync: regenerateKey, isPending: isRegenerating } = useRegenerateApiKey()
   const [showApiKey, setShowApiKey] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     values: { full_name: profile?.full_name || '' },
   })
+
+  const {
+    register: registerPassword,
+    handleSubmit: handleSubmitPassword,
+    reset: resetPassword,
+    formState: { errors: passwordErrors, isSubmitting: isChangingPassword },
+  } = useForm<PasswordData>({ resolver: zodResolver(passwordSchema) })
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -37,6 +56,28 @@ export function ProfilePage() {
     } catch {
       toast.error('Failed to update profile')
     }
+  }
+
+  const onChangePassword = async ({ current_password, new_password }: PasswordData) => {
+    if (!profile?.email) return
+    // Re-verify the current password before allowing the change — a valid session
+    // alone shouldn't be enough to set a new password.
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: profile.email,
+      password: current_password,
+    })
+    if (verifyError) {
+      toast.error('Current password is incorrect')
+      return
+    }
+    const { error } = await supabase.auth.updateUser({ password: new_password })
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    toast.success('Password updated successfully')
+    resetPassword()
+    setShowPassword(false)
   }
 
   const handleCopyKey = async () => {
@@ -107,6 +148,51 @@ export function ProfilePage() {
                 hint="Email cannot be changed"
               />
               <Button type="submit" isLoading={isUpdating}>Save Changes</Button>
+            </form>
+          </Card>
+        </motion.div>
+
+        {/* Change Password */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-brand-500/15 flex items-center justify-center">
+                <Lock className="w-4 h-4 text-brand-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Change Password</h3>
+                <p className="text-xs text-gray-400">Update the password you use to sign in</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitPassword(onChangePassword)} className="space-y-4">
+              <Input
+                label="Current Password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Your current password"
+                error={passwordErrors.current_password?.message}
+                rightElement={
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="text-gray-400 hover:text-gray-200 transition-colors">
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                }
+                {...registerPassword('current_password')}
+              />
+              <Input
+                label="New Password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Min. 8 characters"
+                error={passwordErrors.new_password?.message}
+                {...registerPassword('new_password')}
+              />
+              <Input
+                label="Confirm New Password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Repeat new password"
+                error={passwordErrors.confirm_password?.message}
+                {...registerPassword('confirm_password')}
+              />
+              <Button type="submit" isLoading={isChangingPassword}>Update Password</Button>
             </form>
           </Card>
         </motion.div>

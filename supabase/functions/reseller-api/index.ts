@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
       }
 
       const qty = parseInt(quantity)
-      if (qty < service.min_quantity || qty > service.max_quantity) {
+      if (!Number.isInteger(qty) || qty < service.min_quantity || qty > service.max_quantity) {
         return new Response(JSON.stringify({ error: `Quantity must be between ${service.min_quantity} and ${service.max_quantity}` }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })

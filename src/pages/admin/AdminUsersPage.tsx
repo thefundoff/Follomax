@@ -3,7 +3,7 @@ import { Search, Copy } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { useAdminUsers, useAdminUpdateUser } from '@/hooks/useAdminStats'
+import { useAdminUsers, useAdminUpdateUser, useAdminAdjustBalance } from '@/hooks/useAdminStats'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -22,6 +22,7 @@ export function AdminUsersPage() {
 
   const { data, isLoading } = useAdminUsers(page, 20, search)
   const { mutateAsync: updateUser, isPending } = useAdminUpdateUser()
+  const { mutateAsync: adjustBalance, isPending: isAdjusting } = useAdminAdjustBalance()
 
   const totalPages = data ? Math.ceil(data.total / 20) : 0
 
@@ -37,7 +38,7 @@ export function AdminUsersPage() {
   const handlePromoteToMerchant = async (user: Profile) => {
     const code = Math.random().toString(36).substring(2, 10).toUpperCase()
     try {
-      await updateUser({ userId: user.id, updates: { role: 'merchant', referral_code: code } as Partial<Profile> })
+      await updateUser({ userId: user.id, updates: { role: 'merchant', referral_code: code } })
       toast.success(`Promoted to merchant. Referral code: ${code}`)
     } catch {
       toast.error('Failed to promote user')
@@ -62,9 +63,10 @@ export function AdminUsersPage() {
   const handleAdjustBalance = async () => {
     if (!editUser || adjustment === 0) return
     try {
-      await updateUser({ userId: editUser.id, updates: { balance: Math.max(0, editUser.balance + adjustment) } })
+      await adjustBalance({ userId: editUser.id, amount: adjustment })
       toast.success('Balance updated')
       setEditUser(null)
+      setAdjustment(0)
     } catch {
       toast.error('Failed to update balance')
     }
@@ -134,12 +136,12 @@ export function AdminUsersPage() {
                         <div className="flex gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => { setEditUser(user); setAdjustment(0) }}>Edit</Button>
                           {user.role === 'user' && (
-                            <Button size="sm" variant="ghost" onClick={() => handlePromoteToMerchant(user)}>Merchant</Button>
+                            <Button size="sm" variant="ghost" disabled={isPending} onClick={() => handlePromoteToMerchant(user)}>Merchant</Button>
                           )}
                           {user.role === 'merchant' && (
-                            <Button size="sm" variant="ghost" onClick={() => handleDemoteToUser(user)}>Demote</Button>
+                            <Button size="sm" variant="ghost" disabled={isPending} onClick={() => handleDemoteToUser(user)}>Demote</Button>
                           )}
-                          <Button size="sm" variant={user.is_active ? 'danger' : 'ghost'} onClick={() => handleToggleActive(user)}>
+                          <Button size="sm" variant={user.is_active ? 'danger' : 'ghost'} disabled={isPending} onClick={() => handleToggleActive(user)}>
                             {user.is_active ? 'Suspend' : 'Activate'}
                           </Button>
                         </div>
@@ -169,7 +171,7 @@ export function AdminUsersPage() {
               onChange={e => setAdjustment(Number(e.target.value))}
               hint={`New balance: ${formatCurrency(Math.max(0, editUser.balance + adjustment))}`}
             />
-            <Button className="w-full" onClick={handleAdjustBalance} isLoading={isPending}>
+            <Button className="w-full" onClick={handleAdjustBalance} isLoading={isAdjusting}>
               Apply Adjustment
             </Button>
           </div>

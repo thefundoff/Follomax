@@ -26,12 +26,14 @@ export function useAdminUpdateUser() {
   const qc = useQueryClient()
 
   return useMutation({
+    // Balance is intentionally excluded — it must go through useAdminAdjustBalance
+    // so every change is written to the transactions ledger.
     mutationFn: async ({
       userId,
       updates,
     }: {
       userId: string
-      updates: Partial<Pick<Profile, 'role' | 'is_active' | 'balance'>>
+      updates: Partial<Pick<Profile, 'role' | 'is_active'>> & { referral_code?: string }
     }) => {
       const { error } = await supabase
         .from('profiles')
@@ -41,6 +43,37 @@ export function useAdminUpdateUser() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-users'] })
+    },
+  })
+}
+
+// Adjusts a user's balance through an audited edge function. `amount` is a
+// signed delta (positive to credit, negative to debit); the server records an
+// `admin_adjustment` transaction tagging the acting admin.
+export function useAdminAdjustBalance() {
+  const { session } = useAuth()
+  const qc = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ userId, amount, note }: { userId: string; amount: number; note?: string }) => {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-adjust-balance`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session!.access_token}`,
+          },
+          body: JSON.stringify({ user_id: userId, amount, note }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Adjustment failed')
+      return data as { success: boolean; new_balance: number; applied: number }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-users'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
     },
   })
 }
