@@ -63,11 +63,6 @@ Deno.serve(async (req) => {
     const { data: signIn, error } = await anon.auth.signInWithPassword({ email, password })
 
     if (error) {
-      // An unconfirmed email isn't a wrong password — don't count it.
-      if (/not confirmed/i.test(error.message)) {
-        return json({ error: 'Please confirm your email first — check your inbox.', code: 'email_not_confirmed' }, 401)
-      }
-
       // Wrong password: increment, and lock once the limit is reached.
       const nextCount = (lock?.failed_count ?? 0) + 1
       const locking = nextCount >= MAX_ATTEMPTS

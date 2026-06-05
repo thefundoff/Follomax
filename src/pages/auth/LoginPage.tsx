@@ -63,7 +63,7 @@ export function LoginPage() {
 
     // Authenticate through the secure-login edge function, which enforces the
     // 3-strikes / 15-minute lockout server-side, then install the session.
-    let data: { access_token?: string; refresh_token?: string; error?: string; locked?: boolean; code?: string; retry_after_seconds?: number }
+    let data: { access_token?: string; refresh_token?: string; error?: string; locked?: boolean; retry_after_seconds?: number }
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secure-login`,
@@ -80,10 +80,6 @@ export function LoginPage() {
       data = await res.json()
 
       if (!res.ok) {
-        if (data.code === 'email_not_confirmed') {
-          toast.error('Please confirm your email first — check your inbox for the link.')
-          return
-        }
         if (data.locked && data.retry_after_seconds) {
           const ms = data.retry_after_seconds * 1000
           setLockout(ms)

@@ -4,14 +4,14 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, Zap, Sun, Moon, Eye, EyeOff, MailCheck } from 'lucide-react'
+import { Mail, Lock, User, Zap, Sun, Moon, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { isValidEmail, isDisposableEmail, suggestEmailDomain, webmailProviderFor } from '@/lib/validation'
+import { isValidEmail, isDisposableEmail, suggestEmailDomain } from '@/lib/validation'
 
 const noScript = (val: string) => !/<|>|javascript:|on\w+\s*=|script/i.test(val)
 
@@ -34,8 +34,6 @@ export function RegisterPage() {
   const refCode = searchParams.get('ref')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
-  const [resending, setResending] = useState(false)
 
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true })
@@ -49,9 +47,9 @@ export function RegisterPage() {
   const emailSuggestion = suggestEmailDomain(emailValue)
 
   const onSubmit = async ({ email, password, full_name }: FormData) => {
-    // Confirm the domain can actually receive mail before signing up, so we
-    // don't trigger a confirmation email that just bounces (which throttles our
-    // sending reputation). Fails open if the check itself is unavailable.
+    // Confirm the domain can actually receive mail before signing up, to keep
+    // out junk/typo addresses (and avoid bounced reset/other emails later).
+    // Fails open if the check itself is unavailable.
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-email`,
@@ -78,43 +76,17 @@ export function RegisterPage() {
       // Validation service unreachable — continue and let Supabase handle it.
     }
 
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        // Where the confirmation link sends the user back to. /login picks up the
-        // session from the URL and forwards to /dashboard once verified.
-        emailRedirectTo: `${window.location.origin}/login`,
-        data: { full_name, ...(refCode ? { referral_code: refCode } : {}) },
-      },
+      options: { data: { full_name, ...(refCode ? { referral_code: refCode } : {}) } },
     })
     if (error) {
       toast.error(error.message)
       return
     }
-    // With "Confirm email" enabled, signUp returns no session — the account is
-    // inactive until the emailed link is clicked. Show the check-inbox screen.
-    // (If confirmation is disabled, a session is returned and we log straight in,
-    // so this stays backward-compatible.)
-    if (!data.session) {
-      setPendingEmail(email)
-    } else {
-      toast.success('Account created! Welcome to Follomax.')
-      navigate('/dashboard')
-    }
-  }
-
-  const handleResend = async () => {
-    if (!pendingEmail) return
-    setResending(true)
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: pendingEmail,
-      options: { emailRedirectTo: `${window.location.origin}/login` },
-    })
-    setResending(false)
-    if (error) toast.error(error.message)
-    else toast.success('Confirmation email resent.')
+    toast.success('Account created! Welcome to Follomax.')
+    navigate('/dashboard')
   }
 
   return (
@@ -137,52 +109,6 @@ export function RegisterPage() {
         className="w-full max-w-md"
       >
         <div className="glass-card rounded-2xl p-8">
-          {pendingEmail ? (
-            <div className="text-center">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-brand shadow-brand mb-4">
-                <MailCheck className="w-6 h-6 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold text-white">Confirm your email</h1>
-              <p className="text-gray-400 mt-2 text-sm">
-                We sent a confirmation link to{' '}
-                <span className="text-white font-medium">{pendingEmail}</span>.
-                Click it to activate your account, then sign in.
-              </p>
-              <p className="text-gray-500 mt-3 text-xs">
-                Didn't get it? Check your spam folder, or resend below.
-              </p>
-
-              {(() => {
-                const provider = webmailProviderFor(pendingEmail)
-                return provider ? (
-                  <a href={provider.url} target="_blank" rel="noopener noreferrer">
-                    <Button type="button" className="w-full mt-6" size="lg">
-                      Open {provider.label}
-                    </Button>
-                  </a>
-                ) : null
-              })()}
-
-              <Button
-                type="button"
-                className="w-full mt-3"
-                size="lg"
-                variant="secondary"
-                onClick={handleResend}
-                isLoading={resending}
-              >
-                Resend confirmation email
-              </Button>
-
-              <p className="text-center text-sm text-gray-500 mt-6">
-                Already confirmed?{' '}
-                <Link to="/login" className="text-brand-400 hover:text-brand-300 font-medium transition-colors">
-                  Sign in
-                </Link>
-              </p>
-            </div>
-          ) : (
-          <>
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-brand shadow-brand mb-4">
               <Zap className="w-6 h-6 text-white" />
@@ -265,8 +191,6 @@ export function RegisterPage() {
           <p className="text-center text-xs text-gray-600 mt-4">
             By creating an account you agree to our Terms of Service and Privacy Policy
           </p>
-          </>
-          )}
         </div>
       </motion.div>
     </div>
