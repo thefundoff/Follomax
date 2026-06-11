@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/context/ThemeContext'
 import { AuthGuard } from '@/guards/AuthGuard'
 import { AdminGuard } from '@/guards/AdminGuard'
 import { MerchantGuard } from '@/guards/MerchantGuard'
+import { WhatsAppSupport } from '@/components/WhatsAppSupport'
 
 import { LandingPage } from '@/pages/LandingPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -82,6 +83,8 @@ export default function App() {
             <Route path="/404" element={<NotFound />} />
             <Route path="*" element={<Navigate to="/404" replace />} />
           </Routes>
+
+          <WhatsAppSupport />
         </BrowserRouter>
 
         <Toaster
