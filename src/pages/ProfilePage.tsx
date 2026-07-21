@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { User, Key, Copy, RefreshCw, Eye, EyeOff, Check, Lock } from 'lucide-react'
+import { User, Key, Copy, RefreshCw, Eye, EyeOff, Check, Lock, Send } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useProfile, useUpdateProfile, useRegenerateApiKey } from '@/hooks/useProfile'
@@ -36,6 +37,11 @@ export function ProfilePage() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [tgLink, setTgLink] = useState<{ deep_link: string } | null>(null)
+  const [tgLoading, setTgLoading] = useState(false)
+  const [tgCopied, setTgCopied] = useState(false)
+  const qc = useQueryClient()
+  const telegramLinked = !!profile?.telegram_user_id
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -86,6 +92,43 @@ export function ProfilePage() {
     setKeyCopied(true)
     toast.success('API key copied!')
     setTimeout(() => setKeyCopied(false), 2000)
+  }
+
+  const handleConnectTelegram = async () => {
+    setTgLoading(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('telegram-link-code', { body: { action: 'create' } })
+      if (error) throw error
+      setTgLink(data as { deep_link: string })
+    } catch {
+      toast.error('Could not start Telegram connection')
+    } finally {
+      setTgLoading(false)
+    }
+  }
+
+  const handleCopyTelegramLink = async () => {
+    if (!tgLink?.deep_link) return
+    await navigator.clipboard.writeText(tgLink.deep_link)
+    setTgCopied(true)
+    toast.success('Link copied!')
+    setTimeout(() => setTgCopied(false), 2000)
+  }
+
+  const handleDisconnectTelegram = async () => {
+    if (!confirm('Disconnect Telegram from your account? Folly will stop responding until you reconnect.')) return
+    setTgLoading(true)
+    try {
+      const { error } = await supabase.functions.invoke('telegram-link-code', { body: { action: 'disconnect' } })
+      if (error) throw error
+      setTgLink(null)
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      toast.success('Telegram disconnected')
+    } catch {
+      toast.error('Failed to disconnect')
+    } finally {
+      setTgLoading(false)
+    }
   }
 
   const handleRegenerateKey = async () => {
@@ -238,6 +281,55 @@ export function ProfilePage() {
                 POST with JSON: <code className="text-brand-400">{'{"key":"YOUR_KEY","action":"services|add|balance|status"}'}</code>
               </p>
             </div>
+          </Card>
+        </motion.div>
+
+        {/* Telegram / Folly */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.125 }}>
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-brand-500/15 flex items-center justify-center">
+                <Send className="w-4 h-4 text-brand-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Folly on Telegram</h3>
+                <p className="text-xs text-gray-400">Chat with our AI assistant to order right from Telegram</p>
+              </div>
+            </div>
+
+            {telegramLinked ? (
+              <div className="flex items-center justify-between gap-3 bg-navy-700/60 rounded-xl px-4 py-3 border border-navy-500/50">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm text-gray-200">Connected</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={handleDisconnectTelegram} isLoading={tgLoading}>
+                  Disconnect
+                </Button>
+              </div>
+            ) : tgLink ? (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-navy-700/40 border border-navy-500/30">
+                  <p className="text-xs text-gray-400 mb-2">
+                    Tap the button below to open Telegram and connect. This link is single-use and expires in 15 minutes.
+                  </p>
+                  <code className="text-xs text-brand-300 font-mono break-all">{tgLink.deep_link}</code>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => window.open(tgLink.deep_link, '_blank', 'noopener')} leftIcon={<Send className="w-3.5 h-3.5" />}>
+                    Open in Telegram
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={handleCopyTelegramLink} leftIcon={tgCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}>
+                    {tgCopied ? 'Copied!' : 'Copy Link'}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">After you tap “Connect” in Telegram, refresh this page to see the connected status.</p>
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={handleConnectTelegram} isLoading={tgLoading} leftIcon={<Send className="w-3.5 h-3.5" />}>
+                Connect Telegram
+              </Button>
+            )}
           </Card>
         </motion.div>
 

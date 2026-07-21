@@ -15,6 +15,8 @@ export interface Database {
           is_active: boolean
           merchant_id: string | null
           referral_code: string | null
+          telegram_user_id: number | null
+          phone_number: string | null
           created_at: string
           updated_at: string
         }
@@ -29,6 +31,8 @@ export interface Database {
           is_active?: boolean
           merchant_id?: string | null
           referral_code?: string | null
+          telegram_user_id?: number | null
+          phone_number?: string | null
         }
         Update: {
           full_name?: string | null
@@ -38,6 +42,8 @@ export interface Database {
           is_active?: boolean
           merchant_id?: string | null
           referral_code?: string | null
+          telegram_user_id?: number | null
+          phone_number?: string | null
         }
       }
       categories: {
@@ -131,6 +137,8 @@ export interface Database {
           drip_runs_total: number | null
           drip_runs_done: number
           drip_next_run_at: string | null
+          combo_group_id: string | null
+          combo_label: string | null
         }
         Insert: {
           user_id: string
@@ -139,6 +147,8 @@ export interface Database {
           quantity: number
           charge: number
           status?: OrderStatus
+          combo_group_id?: string | null
+          combo_label?: string | null
         }
         Update: {
           exobooster_order_id?: number | null
@@ -217,6 +227,54 @@ export interface Database {
         }
         Update: {
           value?: Json
+        }
+      }
+      combo_packages: {
+        Row: {
+          id: string
+          platform: string
+          name: string
+          description: string | null
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          platform: string
+          name: string
+          description?: string | null
+          sort_order?: number
+          is_active?: boolean
+        }
+        Update: {
+          platform?: string
+          name?: string
+          description?: string | null
+          sort_order?: number
+          is_active?: boolean
+          updated_at?: string
+        }
+      }
+      combo_items: {
+        Row: {
+          id: string
+          combo_id: string
+          component: string
+          service_id: number
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          combo_id: string
+          component: string
+          service_id: number
+          quantity: number
+        }
+        Update: {
+          component?: string
+          service_id?: number
+          quantity?: number
         }
       }
     }
