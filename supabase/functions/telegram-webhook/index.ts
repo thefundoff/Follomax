@@ -1,6 +1,6 @@
 // Folly — the Follomax Telegram assistant. Receives Telegram webhook updates,
 // onboards/authenticates users entirely in-chat (no web app needed), then runs a
-// Gemini (free-tier) function-calling agent so linked users can browse services,
+// Claude (Anthropic) tool-using agent so linked users can browse services,
 // check balance/orders, and place orders. All money movement goes through the shared
 // placeOrderCore, so a bot order behaves exactly like a web order.
 //
@@ -119,14 +119,14 @@ async function saveSession(admin: AdminClient, tgId: number, state: SessionState
   await admin.from('telegram_sessions').upsert({ telegram_user_id: tgId, state }, { onConflict: 'telegram_user_id' })
 }
 
-// Record Gemini health from real traffic so the admin dashboard can show status
-// without spending any Gemini quota itself. Best-effort; never breaks the reply.
-async function recordGeminiEvent(admin: AdminClient, ok: boolean, status = 0) {
+// Record AI (Claude) health from real traffic so the admin dashboard can show
+// status without spending an extra API call itself. Best-effort; never breaks the reply.
+async function recordAiEvent(admin: AdminClient, ok: boolean, status = 0) {
   try {
     if (ok) {
-      await admin.from('app_settings').upsert({ key: 'gemini_last_ok', value: { at: new Date().toISOString() } }, { onConflict: 'key' })
+      await admin.from('app_settings').upsert({ key: 'ai_last_ok', value: { at: new Date().toISOString() } }, { onConflict: 'key' })
     } else {
-      await admin.from('app_settings').upsert({ key: 'gemini_last_error', value: { status, at: new Date().toISOString() } }, { onConflict: 'key' })
+      await admin.from('app_settings').upsert({ key: 'ai_last_error', value: { status, at: new Date().toISOString() } }, { onConflict: 'key' })
     }
   } catch { /* ignore */ }
 }
@@ -241,83 +241,88 @@ async function verifyLogin(
 }
 
 // ---------------------------------------------------------------------------
-// Gemini
+// Claude (Anthropic Messages API)
 // ---------------------------------------------------------------------------
-interface FunctionCall { name: string; args: Record<string, unknown> }
-interface GeminiPart { text?: string; functionCall?: FunctionCall; functionResponse?: unknown }
-interface GeminiContent { role: 'user' | 'model'; parts: GeminiPart[] }
+interface ClaudeBlock {
+  type: string
+  text?: string
+  id?: string
+  name?: string
+  input?: Record<string, unknown>
+  tool_use_id?: string
+  content?: string
+}
+interface ClaudeMessage { role: 'user' | 'assistant'; content: string | ClaudeBlock[] }
 
-const TOOLS = [{
-  function_declarations: [
-    {
-      name: 'search_services',
-      description: 'Search the Follomax service catalog by keyword and/or platform. Returns real service ids, prices (rate per 1000) and min/max quantities. ALWAYS use this before quoting a price or placing an order — never invent services, ids or prices.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Keywords, e.g. "instagram followers" or "tiktok views"' },
-          platform: { type: 'string', description: 'Optional platform/category name to narrow results, e.g. "Instagram"' },
-        },
+const TOOLS = [
+  {
+    name: 'search_services',
+    description: 'Search the Follomax service catalog by keyword and/or platform. Returns real service ids, prices (rate per 1000) and min/max quantities. ALWAYS use this before quoting a price or placing an order — never invent services, ids or prices.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Keywords, e.g. "instagram followers" or "tiktok views"' },
+        platform: { type: 'string', description: 'Optional platform/category name to narrow results, e.g. "Instagram"' },
       },
     },
-    {
-      name: 'get_balance',
-      description: "Get the user's current wallet balance.",
-      parameters: { type: 'object', properties: {} },
-    },
-    {
-      name: 'place_order',
-      description: 'Stage an order for the user to confirm. The user will receive Confirm/Cancel buttons automatically, so after calling this just tell them the price and ask them to confirm. Requires a service_id from search_services, the target link/username, and a quantity within the service min/max.',
-      parameters: {
-        type: 'object',
-        properties: {
-          service_id: { type: 'integer', description: 'Internal service id from search_services' },
-          link: { type: 'string', description: 'Target post URL or profile/username' },
-          quantity: { type: 'integer', description: 'How many (must be within the service min/max)' },
-        },
-        required: ['service_id', 'link', 'quantity'],
+  },
+  {
+    name: 'get_balance',
+    description: "Get the user's current wallet balance.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'place_order',
+    description: 'Stage an order for the user to confirm. The user will receive Confirm/Cancel buttons automatically, so after calling this just tell them the price and ask them to confirm. Requires a service_id from search_services, the target link/username, and a quantity within the service min/max.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'integer', description: 'Internal service id from search_services' },
+        link: { type: 'string', description: 'Target post URL or profile/username' },
+        quantity: { type: 'integer', description: 'How many (must be within the service min/max)' },
       },
+      required: ['service_id', 'link', 'quantity'],
     },
-    {
-      name: 'get_order_status',
-      description: "Look up the user's recent orders, or a specific order by its id/short id.",
-      parameters: {
-        type: 'object',
-        properties: { order_id: { type: 'string', description: 'Optional order id or its first 8 characters' } },
-      },
+  },
+  {
+    name: 'get_order_status',
+    description: "Look up the user's recent orders, or a specific order by its id/short id.",
+    input_schema: {
+      type: 'object',
+      properties: { order_id: { type: 'string', description: 'Optional order id or its first 8 characters' } },
     },
-    {
-      name: 'add_funds_link',
-      description: 'Get the link where the user can top up their wallet balance.',
-      parameters: { type: 'object', properties: {} },
-    },
-  ],
-}]
+  },
+  {
+    name: 'add_funds_link',
+    description: 'Get the link where the user can top up their wallet balance.',
+    input_schema: { type: 'object', properties: {} },
+  },
+]
 
-async function callGemini(
+// Raw Anthropic Messages API call (Deno edge runtime — consistent with the rest of
+// this function's fetch-based integrations). Thinking is omitted (off on Opus 4.8)
+// for a snappy chat; the system prompt keeps replies to just the message.
+async function callClaude(
   apiKey: string,
   model: string,
-  systemInstruction: string,
-  contents: GeminiContent[],
-): Promise<GeminiPart[]> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemInstruction }] },
-        contents,
-        tools: TOOLS,
-      }),
+  system: string,
+  messages: ClaudeMessage[],
+): Promise<{ stop_reason: string; content: ClaudeBlock[] }> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
     },
-  )
+    body: JSON.stringify({ model, max_tokens: 1024, system, messages, tools: TOOLS }),
+  })
   if (!res.ok) {
-    // Quota exhausted (429), key invalid (400/403), server error (5xx), etc.
-    throw new Error(`gemini_${res.status}`)
+    // Rate limited (429), key invalid (401/403), overloaded (529), server error (5xx), etc.
+    throw new Error(`claude_${res.status}`)
   }
   const data = await res.json()
-  return data?.candidates?.[0]?.content?.parts ?? []
+  return { stop_reason: data?.stop_reason ?? 'end_turn', content: (data?.content ?? []) as ClaudeBlock[] }
 }
 
 // ---------------------------------------------------------------------------
@@ -452,32 +457,38 @@ function systemPrompt(currency: string, webAppUrl: string): string {
     '- If their balance is too low, tell them and share the top-up link via add_funds_link.',
     '- Keep replies short, warm and easy to read. A few emojis are fine. Never expose internal ids unless asked.',
     `- If someone asks to add funds, direct them to ${webAppUrl.replace(/\/$/, '')}/funds.`,
+    '- Reply with only the message to send the user — no analysis, planning, or meta-commentary about your process.',
   ].join('\n')
 }
 
 async function runAgent(ctx: ToolCtx, apiKey: string, model: string, userText: string): Promise<string> {
   const history = ctx.session.history ?? []
-  const contents: GeminiContent[] = history.map((h) => ({ role: h.role, parts: [{ text: h.text }] }))
-  contents.push({ role: 'user', parts: [{ text: userText }] })
+  const messages: ClaudeMessage[] = history.map((h) => ({
+    role: h.role === 'model' ? 'assistant' : 'user',
+    content: h.text,
+  }))
+  messages.push({ role: 'user', content: userText })
 
   const sys = systemPrompt(ctx.currency, ctx.webAppUrl)
 
   for (let i = 0; i < 5; i++) {
-    const parts = await callGemini(apiKey, model, sys, contents)
-    const calls = parts.filter((p) => p.functionCall).map((p) => p.functionCall!) as FunctionCall[]
+    const { stop_reason, content } = await callClaude(apiKey, model, sys, messages)
 
-    if (calls.length === 0) {
-      const text = parts.map((p) => p.text).filter(Boolean).join('\n').trim()
-      return text || "Sorry, I didn't quite get that. Could you rephrase?"
+    if (stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content })
+      const toolResults: ClaudeBlock[] = []
+      for (const block of content) {
+        if (block.type === 'tool_use' && block.name) {
+          const result = await executeTool(block.name, block.input ?? {}, ctx)
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) })
+        }
+      }
+      messages.push({ role: 'user', content: toolResults })
+      continue
     }
 
-    contents.push({ role: 'model', parts: calls.map((c) => ({ functionCall: c })) })
-    const responseParts: GeminiPart[] = []
-    for (const call of calls) {
-      const result = await executeTool(call.name, call.args ?? {}, ctx)
-      responseParts.push({ functionResponse: { name: call.name, response: result } })
-    }
-    contents.push({ role: 'user', parts: responseParts })
+    const text = content.filter((b) => b.type === 'text').map((b) => b.text).filter(Boolean).join('\n').trim()
+    return text || "Sorry, I didn't quite get that. Could you rephrase?"
   }
 
   return 'That took a few too many steps — could you try asking again more directly?'
@@ -551,8 +562,9 @@ Deno.serve(async (req) => {
 
   const token = await getSetting(admin, 'telegram_bot_token')
   const currency = (await getSetting(admin, 'currency')) || 'NGN'
-  const model = (await getSetting(admin, 'gemini_model')) || 'gemini-2.5-flash'
-  const geminiKey = await getSetting(admin, 'gemini_api_key')
+  const model = (await getSetting(admin, 'anthropic_model')) || 'claude-opus-4-8'
+  const rawKey = await getSetting(admin, 'anthropic_api_key')
+  const aiKey = rawKey && !rawKey.startsWith('REPLACE_') ? rawKey : ''
   const webAppUrl = (await getSetting(admin, 'web_app_url')) || ''
 
   try {
@@ -880,7 +892,7 @@ Deno.serve(async (req) => {
       return new Response('ok', { status: 200 })
     }
 
-    // Fast, AI-free path for commands & simple keywords (saves Gemini quota).
+    // Fast, AI-free path for commands & simple keywords (saves AI tokens).
     const kw = matchKeyword(text)
     if (kw === 'cancel') {
       session.pending = null
@@ -890,21 +902,21 @@ Deno.serve(async (req) => {
       return new Response('ok', { status: 200 })
     }
     // Slash commands are always deterministic; simple info keywords too. Order-ish
-    // phrases (kw === 'services') are left for Gemini when it's available (nicer
-    // one-shot ordering), and only fall back to the guided menu if Gemini is down.
+    // phrases (kw === 'services') are left for the AI when it's available (nicer
+    // one-shot ordering), and only fall back to the guided menu if the AI is down.
     const aiFreeIntents = new Set<Intent>(['menu', 'balance', 'orders', 'addfunds', 'help'])
     if (kw && (text.startsWith('/') || (isCommandLike(text) && aiFreeIntents.has(kw)))) {
       await handleIntent(admin, token, chatId, profile.id, kw, currency, webAppUrl)
       return new Response('ok', { status: 200 })
     }
 
-    // Richer natural language → Gemini, with graceful fallback if it's down/exhausted.
-    if (geminiKey) {
+    // Richer natural language → Claude, with graceful fallback if it's down/rate-limited.
+    if (aiKey) {
       try {
         await tg(token, 'sendChatAction', { chat_id: chatId, action: 'typing' })
         const ctx: ToolCtx = { admin, userId: profile.id, currency, webAppUrl, session, pendingStaged: false }
-        const reply = await runAgent(ctx, geminiKey, model, text)
-        await recordGeminiEvent(admin, true)
+        const reply = await runAgent(ctx, aiKey, model, text)
+        await recordAiEvent(admin, true)
         const history = (session.history ?? []).concat(
           { role: 'user', text },
           { role: 'model', text: reply },
@@ -913,9 +925,9 @@ Deno.serve(async (req) => {
         await sendMessage(token, chatId, reply, ctx.pendingStaged ? confirmKeyboard : undefined)
         return new Response('ok', { status: 200 })
       } catch (e) {
-        console.error('gemini unavailable, using fallback:', e)
-        const m = String(e).match(/gemini_(\d+)/)
-        await recordGeminiEvent(admin, false, m ? parseInt(m[1], 10) : 0)
+        console.error('claude unavailable, using fallback:', e)
+        const m = String(e).match(/claude_(\d+)/)
+        await recordAiEvent(admin, false, m ? parseInt(m[1], 10) : 0)
       }
     }
 

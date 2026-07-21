@@ -31,16 +31,6 @@ function derive(s?: AiStatus): { label: string; variant: Variant } {
   return { label: 'Operational', variant: 'success' }
 }
 
-// Duration until the next midnight in US Pacific time (when the daily quota resets).
-// The delta to LA's next midnight is timezone-independent, so this is exact.
-function msUntilPacificMidnight(): number {
-  const now = new Date()
-  const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }))
-  const next = new Date(la)
-  next.setHours(24, 0, 0, 0)
-  return next.getTime() - la.getTime()
-}
-
 function ago(at?: string | null): string {
   if (!at) return '—'
   return formatDistanceToNow(new Date(at), { addSuffix: true })
@@ -51,7 +41,6 @@ export function AiStatusCard() {
   const { mutateAsync: testNow, isPending } = useAiStatusLiveTest()
 
   const { label, variant } = derive(status)
-  const resetIn = formatDistanceToNow(new Date(Date.now() + msUntilPacificMidnight()), { addSuffix: true })
 
   const handleTest = async () => {
     try {
@@ -73,8 +62,8 @@ export function AiStatusCard() {
             <Sparkles className="w-4 h-4 text-brand-400" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-white">Folly AI (Gemini)</h3>
-            <p className="text-xs text-gray-400">{status?.model || 'gemini'}{status?.live && status?.latency_ms ? ` · ${status.latency_ms}ms` : ''}</p>
+            <h3 className="text-base font-semibold text-white">Folly AI (Claude)</h3>
+            <p className="text-xs text-gray-400">{status?.model || 'claude'}{status?.live && status?.latency_ms ? ` · ${status.latency_ms}ms` : ''}</p>
           </div>
         </div>
         <Badge variant={isLoading ? 'default' : variant}>{isLoading ? 'Loading…' : label}</Badge>
@@ -98,8 +87,9 @@ export function AiStatusCard() {
       ) : null}
 
       <p className="text-xs text-gray-500 mb-4">
-        Per-minute limits reset within ~1 minute. The daily quota resets at midnight Pacific — {resetIn}.
-        When rate-limited, Folly automatically falls back to buttons &amp; keywords, so users can still order.
+        Anthropic rate limits are per-minute (requests &amp; tokens) and recover within ~60s; a 429 includes a
+        retry-after. Raising limits means moving up a usage tier. When rate-limited, Folly automatically falls
+        back to buttons &amp; keywords, so users can still order.
       </p>
 
       <Button variant="secondary" size="sm" onClick={handleTest} isLoading={isPending} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>
