@@ -415,7 +415,7 @@ async function executeTool(name: string, args: Record<string, unknown>, ctx: Too
   }
 
   if (name === 'add_funds_link') {
-    return { url: `${ctx.webAppUrl.replace(/\/$/, '')}/add-funds` }
+    return { url: `${ctx.webAppUrl.replace(/\/$/, '')}/funds` }
   }
 
   return { error: 'unknown_tool' }
@@ -435,7 +435,7 @@ function systemPrompt(currency: string, webAppUrl: string): string {
     '- When the user is ready, call place_order. This shows them Confirm/Cancel buttons, so after calling it just state the price clearly and ask them to confirm — do NOT claim the order is placed yet.',
     '- If their balance is too low, tell them and share the top-up link via add_funds_link.',
     '- Keep replies short, warm and easy to read. A few emojis are fine. Never expose internal ids unless asked.',
-    `- If someone asks to add funds, direct them to ${webAppUrl.replace(/\/$/, '')}/add-funds.`,
+    `- If someone asks to add funds, direct them to ${webAppUrl.replace(/\/$/, '')}/funds.`,
   ].join('\n')
 }
 
@@ -657,7 +657,7 @@ Deno.serve(async (req) => {
           const { data: fresh } = await admin.from('profiles').select('balance').eq('id', profile.id).single()
           await sendMessage(token, chatId, `✅ Order placed! ${p.quantity.toLocaleString()} × ${p.service_name}\nOrder #${result.order_id.slice(0, 8)} — now processing.\nNew balance: ${fresh?.balance?.toFixed(2)} ${currency}`)
         } else if (result.code === 'insufficient_balance') {
-          await sendMessage(token, chatId, `⚠️ Not enough balance for that order. Top up here: ${webAppUrl.replace(/\/$/, '')}/add-funds`)
+          await sendMessage(token, chatId, `⚠️ Not enough balance for that order. Top up here: ${webAppUrl.replace(/\/$/, '')}/funds`)
         } else {
           await sendMessage(token, chatId, `⚠️ Sorry, I couldn't place that order: ${result.error}. You have not been charged.`)
         }

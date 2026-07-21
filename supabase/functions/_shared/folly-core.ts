@@ -79,7 +79,7 @@ export function helpReply(): Reply {
 }
 
 export function addFundsReply(webAppUrl: string): Reply {
-  const url = `${webAppUrl.replace(/\/$/, '')}/add-funds`
+  const url = `${webAppUrl.replace(/\/$/, '')}/funds`
   return {
     text: '➕ Top up your wallet securely on the Follomax web app:',
     buttons: [[{ id: 'open_addfunds', title: '➕ Add Funds', url }], [{ id: 'menu_main', title: '⬅ Menu' }]],
