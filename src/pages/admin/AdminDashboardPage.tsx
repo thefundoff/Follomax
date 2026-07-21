@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { StatsCard } from '@/components/dashboard/StatsCard'
 import { useAdminStats, useAdminPendingDeposits, useAdminApproveDeposit } from '@/hooks/useAdminStats'
+import { AiStatusCard } from '@/components/dashboard/AiStatusCard'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -32,6 +33,9 @@ export function AdminDashboardPage() {
           <StatsCard label="Total Revenue" value={formatCurrency(stats?.total_revenue ?? 0)} icon={DollarSign} iconColor="text-green-400" iconBg="bg-green-500/15" isLoading={isLoading} delay={0.1} />
           <StatsCard label="Pending Deposits" value={formatNumber(stats?.pending_deposits ?? 0)} icon={Clock} iconColor="text-orange-400" iconBg="bg-orange-500/15" isLoading={isLoading} delay={0.15} />
         </div>
+
+        {/* Folly AI (Gemini) status */}
+        <AiStatusCard />
 
         {/* Pending deposits */}
         <Card>

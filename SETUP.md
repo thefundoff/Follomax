@@ -60,6 +60,7 @@ supabase functions deploy reseller-api
 # Folly — Telegram assistant (see section 12)
 supabase functions deploy telegram-link-code
 supabase functions deploy telegram-webhook
+supabase functions deploy gemini-status   # admin AI-health check for the dashboard
 ```
 
 ## 6. Configure Flutterwave Webhook

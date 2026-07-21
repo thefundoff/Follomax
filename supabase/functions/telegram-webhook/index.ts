@@ -118,6 +118,18 @@ async function saveSession(admin: AdminClient, tgId: number, state: SessionState
   await admin.from('telegram_sessions').upsert({ telegram_user_id: tgId, state }, { onConflict: 'telegram_user_id' })
 }
 
+// Record Gemini health from real traffic so the admin dashboard can show status
+// without spending any Gemini quota itself. Best-effort; never breaks the reply.
+async function recordGeminiEvent(admin: AdminClient, ok: boolean, status = 0) {
+  try {
+    if (ok) {
+      await admin.from('app_settings').upsert({ key: 'gemini_last_ok', value: { at: new Date().toISOString() } }, { onConflict: 'key' })
+    } else {
+      await admin.from('app_settings').upsert({ key: 'gemini_last_error', value: { status, at: new Date().toISOString() } }, { onConflict: 'key' })
+    }
+  } catch { /* ignore */ }
+}
+
 interface TgUser { id: number; first_name?: string; last_name?: string; username?: string }
 
 async function resolveProfile(admin: AdminClient, tgId: number) {
@@ -851,6 +863,7 @@ Deno.serve(async (req) => {
         await tg(token, 'sendChatAction', { chat_id: chatId, action: 'typing' })
         const ctx: ToolCtx = { admin, userId: profile.id, currency, webAppUrl, session, pendingStaged: false }
         const reply = await runAgent(ctx, geminiKey, model, text)
+        await recordGeminiEvent(admin, true)
         const history = (session.history ?? []).concat(
           { role: 'user', text },
           { role: 'model', text: reply },
@@ -860,6 +873,8 @@ Deno.serve(async (req) => {
         return new Response('ok', { status: 200 })
       } catch (e) {
         console.error('gemini unavailable, using fallback:', e)
+        const m = String(e).match(/gemini_(\d+)/)
+        await recordGeminiEvent(admin, false, m ? parseInt(m[1], 10) : 0)
       }
     }
 
