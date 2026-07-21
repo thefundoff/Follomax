@@ -60,7 +60,7 @@ supabase functions deploy reseller-api
 # Folly — Telegram assistant (see section 12)
 supabase functions deploy telegram-link-code
 supabase functions deploy telegram-webhook
-supabase functions deploy ai-status       # admin AI-health check for the dashboard
+supabase functions deploy gemini-status   # admin AI-health check for the dashboard
 ```
 
 ## 6. Configure Flutterwave Webhook
@@ -103,14 +103,12 @@ Open http://localhost:5173
 
 Folly lets users chat on Telegram to browse services, check their balance, place
 orders and track them — reusing the same order pipeline as the web app. The AI brain
-is **Anthropic Claude** (Messages API). Note: Claude is paid (no free tier) — billed
-per token. The default model is `claude-opus-4-8`; for a high-volume bot you can switch
-to a cheaper model (e.g. `claude-haiku-4-5`, `claude-sonnet-5`) via `anthropic_model`.
+is Google Gemini (free tier).
 
 **Prerequisites**
-1. Run migrations `014_telegram.sql`, `015_telegram_phone.sql`, and `016_anthropic.sql` in the SQL Editor.
+1. Run migrations `supabase/migrations/014_telegram.sql` and `015_telegram_phone.sql` in the SQL Editor.
 2. Create a bot with [@BotFather](https://t.me/BotFather) → note the **bot token** and **username**.
-3. Get an **Anthropic API key** at https://console.anthropic.com/settings/keys.
+3. Get a free **Gemini API key** at https://aistudio.google.com/apikey.
 4. Choose a long random string for the **webhook secret**.
 
 **Set the secrets** in Supabase → Table Editor → `app_settings` (or via SQL), replacing
@@ -120,10 +118,10 @@ the placeholders seeded by the migration:
 UPDATE app_settings SET value = '"123456:ABC-your-bot-token"'      WHERE key = 'telegram_bot_token';
 UPDATE app_settings SET value = '"YourBotUsername"'                 WHERE key = 'telegram_bot_username'; -- no @
 UPDATE app_settings SET value = '"a-long-random-webhook-secret"'    WHERE key = 'telegram_webhook_secret';
-UPDATE app_settings SET value = '"sk-ant-your-anthropic-api-key"'   WHERE key = 'anthropic_api_key';
+UPDATE app_settings SET value = '"your-gemini-api-key"'             WHERE key = 'gemini_api_key';
 UPDATE app_settings SET value = '"https://your-follomax-domain.com"' WHERE key = 'web_app_url';
--- optional: change the model (default claude-opus-4-8)
--- UPDATE app_settings SET value = '"claude-haiku-4-5"' WHERE key = 'anthropic_model';
+-- optional: change the model (default gemini-2.5-flash)
+-- UPDATE app_settings SET value = '"gemini-2.0-flash"' WHERE key = 'gemini_model';
 ```
 
 **Deploy & disable JWT verification.** Telegram sends no Supabase JWT, so the webhook
@@ -163,10 +161,10 @@ The web **Profile → Connect Telegram** button still works (generates `t.me/<bo
 for users who prefer to link from the web. Once connected, users can chat naturally:
 "what Instagram services do you have?", "send 1000 likes to <link>", "what's my balance?".
 
-**Buttons & AI-free fallback.** Folly also works entirely without the AI — via a main-menu
+**Buttons & AI-free fallback.** Folly also works entirely without Gemini — via a main-menu
 inline keyboard, a guided button ordering flow (pick platform → service → link → quantity →
 confirm), and keyword recognition ("balance", "orders", "services", "add funds", "help").
-If the Claude key is rate-limited, missing, or erroring, Folly automatically falls back to this
+If the Gemini key is exhausted, missing, or erroring, Folly automatically falls back to this
 deterministic layer (in `_shared/folly-core.ts`, which is channel-agnostic and reused by the
 future WhatsApp handler). The Telegram command menu is registered via `setMyCommands`
 (/menu, /balance, /orders, /services, /addfunds, /help) — re-run it if you change the commands:

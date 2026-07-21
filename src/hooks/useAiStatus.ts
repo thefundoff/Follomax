@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
 export interface AiStatus {
-  provider?: string
   configured: boolean
   model: string
   live: boolean
@@ -15,12 +14,12 @@ export interface AiStatus {
   message?: string
 }
 
-// Cheap, pollable read — derives health from the bot's recorded traffic (no AI usage).
+// Cheap, pollable read — derives health from the bot's recorded traffic (no Gemini quota used).
 export function useAiStatus() {
   return useQuery({
     queryKey: ['ai-status'],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('ai-status', { body: { live: false } })
+      const { data, error } = await supabase.functions.invoke('gemini-status', { body: { live: false } })
       if (error) throw error
       return data as AiStatus
     },
@@ -29,12 +28,12 @@ export function useAiStatus() {
   })
 }
 
-// On-demand live ping (costs one tiny AI request) for the "Test now" button.
+// On-demand live ping (costs one Gemini request) for the "Test now" button.
 export function useAiStatusLiveTest() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('ai-status', { body: { live: true } })
+      const { data, error } = await supabase.functions.invoke('gemini-status', { body: { live: true } })
       if (error) throw error
       return data as AiStatus
     },
