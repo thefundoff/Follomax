@@ -222,13 +222,18 @@ Deno.serve(async (req) => {
   let update: Record<string, unknown>
   try { update = JSON.parse(rawBody) } catch { return new Response('ok', { status: 200 }) }
 
-  const token = await getSetting(admin, 'whatsapp_access_token')
-  const phoneId = await getSetting(admin, 'whatsapp_phone_number_id')
-  const currency = (await getSetting(admin, 'currency')) || 'NGN'
-  const model = (await getSetting(admin, 'gemini_model')) || 'gemini-flash-latest'
-  const rawKey = await getSetting(admin, 'gemini_api_key')
+  const [token, phoneId, currencyRaw, modelRaw, rawKey, webAppUrlRaw] = await Promise.all([
+    getSetting(admin, 'whatsapp_access_token'),
+    getSetting(admin, 'whatsapp_phone_number_id'),
+    getSetting(admin, 'currency'),
+    getSetting(admin, 'gemini_model'),
+    getSetting(admin, 'gemini_api_key'),
+    getSetting(admin, 'web_app_url'),
+  ])
+  const currency = currencyRaw || 'NGN'
+  const model = modelRaw || 'gemini-flash-latest'
   const geminiKey = rawKey && !rawKey.startsWith('REPLACE_') ? rawKey : ''
-  const webAppUrl = (await getSetting(admin, 'web_app_url')) || ''
+  const webAppUrl = webAppUrlRaw || ''
 
   try {
     // ---- Parse the inbound message ----

@@ -244,7 +244,9 @@ async function verifyLogin(
 // Gemini
 // ---------------------------------------------------------------------------
 interface FunctionCall { name: string; args: Record<string, unknown> }
-interface GeminiPart { text?: string; functionCall?: FunctionCall; functionResponse?: unknown }
+// thoughtSignature: newer Gemini models attach it to function-call parts and REQUIRE it
+// to be echoed back on the follow-up turn, else the next request 400s.
+interface GeminiPart { text?: string; functionCall?: FunctionCall; functionResponse?: unknown; thoughtSignature?: string }
 interface GeminiContent { role: 'user' | 'model'; parts: GeminiPart[] }
 
 const TOOLS = [{
@@ -471,7 +473,8 @@ async function runAgent(ctx: ToolCtx, apiKey: string, model: string, userText: s
       return text || "Sorry, I didn't quite get that. Could you rephrase?"
     }
 
-    contents.push({ role: 'model', parts: calls.map((c) => ({ functionCall: c })) })
+    // Echo the model's parts VERBATIM (keeps each functionCall's thoughtSignature).
+    contents.push({ role: 'model', parts })
     const responseParts: GeminiPart[] = []
     for (const call of calls) {
       const result = await executeTool(call.name, call.args ?? {}, ctx)
