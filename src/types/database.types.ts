@@ -17,6 +17,7 @@ export interface Database {
           referral_code: string | null
           telegram_user_id: number | null
           phone_number: string | null
+          whatsapp_id: string | null
           created_at: string
           updated_at: string
         }
@@ -33,6 +34,7 @@ export interface Database {
           referral_code?: string | null
           telegram_user_id?: number | null
           phone_number?: string | null
+          whatsapp_id?: string | null
         }
         Update: {
           full_name?: string | null
@@ -44,6 +46,7 @@ export interface Database {
           referral_code?: string | null
           telegram_user_id?: number | null
           phone_number?: string | null
+          whatsapp_id?: string | null
         }
       }
       categories: {

@@ -61,6 +61,7 @@ supabase functions deploy reseller-api
 supabase functions deploy telegram-link-code
 supabase functions deploy telegram-webhook
 supabase functions deploy gemini-status   # admin AI-health check for the dashboard
+supabase functions deploy whatsapp-webhook # Folly on WhatsApp (see section 13)
 ```
 
 ## 6. Configure Flutterwave Webhook
@@ -174,3 +175,54 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/setMyCommands" \
   -H "Content-Type: application/json" \
   -d '{"commands":[{"command":"menu","description":"Main menu"},{"command":"balance","description":"Check your wallet balance"},{"command":"orders","description":"Your recent orders"},{"command":"services","description":"Browse & order services"},{"command":"addfunds","description":"Top up your wallet"},{"command":"help","description":"How to use Folly"}]}'
 ```
+
+## 13. Folly on WhatsApp (official Cloud API — free & safe)
+
+Folly runs on WhatsApp via Meta's **official WhatsApp Cloud API** — the only safe,
+ToS-compliant route. **Do not** use unofficial libraries (Baileys, whatsapp-web.js,
+venom-bot); they get numbers permanently banned. Replies are free: because Folly only
+*responds* to users, every message stays inside WhatsApp's 24-hour service window (no
+paid templates). It reuses the same brain as Telegram (`_shared/folly-core`,
+`folly-agent`, `folly-onboarding`), and a user who verified their phone on Telegram is
+**auto-recognized on WhatsApp** by that number.
+
+**1. Prerequisites**
+- Run migration `supabase/migrations/017_whatsapp.sql`.
+- Create a [Meta developer account](https://developers.facebook.com/) → **Create App** →
+  type **Business** → add the **WhatsApp** product.
+
+**2. Collect four values** (from the Meta app):
+- **Access token** — WhatsApp → API Setup gives a 24-hour token to start. For production,
+  create a **System User** (Business Settings → Users → System Users) with a **permanent**
+  token (`whatsapp_business_messaging` + `whatsapp_business_management` permissions).
+- **Phone number ID** — WhatsApp → API Setup (the test number's ID, not the phone number).
+- **App secret** — App Settings → Basic → *Show* app secret.
+- **Verify token** — any long random string you choose (used only for the webhook handshake).
+
+**3. Store the secrets** (Supabase → `app_settings`, replacing the migration placeholders):
+
+```sql
+UPDATE app_settings SET value = '"EAAG...your-access-token"'      WHERE key = 'whatsapp_access_token';
+UPDATE app_settings SET value = '"123456789012345"'              WHERE key = 'whatsapp_phone_number_id';
+UPDATE app_settings SET value = '"a-long-random-verify-token"'   WHERE key = 'whatsapp_verify_token';
+UPDATE app_settings SET value = '"your-app-secret"'              WHERE key = 'whatsapp_app_secret';
+```
+
+**4. Deploy** (JWT off — Meta sends no Supabase JWT):
+
+```bash
+supabase functions deploy whatsapp-webhook --no-verify-jwt
+```
+
+**5. Configure the webhook** in Meta → WhatsApp → Configuration → Edit:
+- **Callback URL:** `https://YOUR_PROJECT_REF.supabase.co/functions/v1/whatsapp-webhook`
+- **Verify token:** the same random string you stored above → click **Verify and save**.
+- Under **Webhook fields**, subscribe to **`messages`**.
+
+**6. Pilot free (no verification):** in WhatsApp → API Setup, add up to **5 recipient
+numbers**. Message the test number from one of them — Folly replies with the onboarding
+buttons. This is fully free and needs no business verification.
+
+**7. Go public (when ready):** add your own phone number and complete **Business
+Verification** (free; needs business documents, takes a few days). Only then can Folly
+message arbitrary customers beyond the 5 test numbers.
