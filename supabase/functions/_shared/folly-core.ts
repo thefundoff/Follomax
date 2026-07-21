@@ -213,6 +213,94 @@ export interface OrderFlow {
   max: number
   link?: string
   attempts?: number
+  quantity?: number // pre-known (from the AI-free order parser) → skips the quantity step
+}
+
+// ---------------------------------------------------------------------------
+// AI-free order parser — recognises "N <type> <platform>" without any AI, so Folly
+// still routes an order straight to matching services when Gemini is unavailable.
+// ---------------------------------------------------------------------------
+const TYPE_MAP: [RegExp, string][] = [
+  [/\b(followers?|follows?)\b/, 'follower'],
+  [/\b(subscribers?|subs?)\b/, 'subscriber'],
+  [/\b(likes?)\b/, 'like'],
+  [/\b(views?)\b/, 'view'],
+  [/\b(comments?)\b/, 'comment'],
+  [/\b(shares?|reposts?|retweets?)\b/, 'share'],
+  [/\b(members?)\b/, 'member'],
+  [/\b(plays?|streams?)\b/, 'play'],
+  [/\b(saves?)\b/, 'save'],
+  [/\b(reactions?)\b/, 'reaction'],
+]
+
+const PLATFORM_ALIASES: [RegExp, string][] = [
+  [/\b(ig|insta|instagram)\b/, 'instagram'],
+  [/\b(yt|youtube)\b/, 'youtube'],
+  [/\b(fb|facebook)\b/, 'facebook'],
+  [/\b(x|twitter)\b/, 'twitter'],
+  [/\b(tt|tiktok)\b/, 'tiktok'],
+  [/\b(tg|telegram)\b/, 'telegram'],
+  [/\b(snapchat|snap)\b/, 'snapchat'],
+  [/\b(threads)\b/, 'threads'],
+  [/\b(linkedin)\b/, 'linkedin'],
+  [/\b(twitch)\b/, 'twitch'],
+  [/\b(spotify)\b/, 'spotify'],
+]
+
+// Extract a quantity like "300", "1,000", "2k", "1.5k".
+export function parseQuantity(text: string): number | null {
+  const m = text.toLowerCase().match(/(\d[\d,.]*)\s*([km])?/)
+  if (!m) return null
+  let n = parseFloat(m[1].replace(/,/g, ''))
+  if (!Number.isFinite(n)) return null
+  if (m[2] === 'k') n *= 1000
+  else if (m[2] === 'm') n *= 1_000_000
+  n = Math.round(n)
+  return n > 0 ? n : null
+}
+
+export interface ParsedService { service_id: number; name: string; rate: number; min: number; max: number }
+
+export async function parseOrderIntent(admin: AdminClient, text: string): Promise<{ quantity: number | null; services: ParsedService[] } | null> {
+  const t = text.toLowerCase()
+
+  let term = ''
+  for (const [re, s] of TYPE_MAP) { if (re.test(t)) { term = s; break } }
+  if (!term) return null // no service-type word → not an order
+
+  let platform = ''
+  for (const [re, p] of PLATFORM_ALIASES) { if (re.test(t)) { platform = p; break } }
+  if (!platform) {
+    const { data: cats } = await admin.from('categories').select('name').eq('is_active', true)
+    for (const c of (cats ?? []) as { name: string }[]) {
+      const n = String(c.name).toLowerCase()
+      if (n.length >= 3 && t.includes(n)) { platform = n; break }
+    }
+  }
+
+  let q = admin
+    .from('services')
+    .select('id, name, rate, min_quantity, max_quantity, categories!inner(name)')
+    .eq('is_active', true)
+    .ilike('name', `%${term}%`)
+  if (platform) q = q.ilike('categories.name', `%${platform}%`)
+
+  const { data } = await q.order('rate').limit(6)
+  const services: ParsedService[] = (data ?? []).map((s: Record<string, unknown>) => ({
+    service_id: s.id as number,
+    name: s.name as string,
+    rate: Number(s.rate),
+    min: s.min_quantity as number,
+    max: s.max_quantity as number,
+  }))
+  if (services.length === 0) return null
+  return { quantity: parseQuantity(text), services }
+}
+
+export function servicePickerReply(services: ParsedService[]): Reply {
+  const rows: Btn[][] = services.map((s) => [{ id: `svc_${s.service_id}`, title: trunc(`${s.name} — ${money(s.rate)}/1k`, 60) }])
+  rows.push([{ id: 'menu_main', title: '⬅ Menu' }])
+  return { text: '🔎 Here are matching services — tap one to order:', buttons: rows }
 }
 
 // Returns the service detail prompt and the flow to store, or null if not found.

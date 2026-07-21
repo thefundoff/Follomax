@@ -23,6 +23,8 @@ import {
   matchKeyword,
   isCommandLike,
   resolveTarget,
+  parseOrderIntent,
+  servicePickerReply,
   mainMenuReply,
   helpReply,
   addFundsReply,
@@ -108,6 +110,7 @@ interface SessionState {
   auth?: AuthState | null
   pending_ref?: string | null
   flow?: OrderFlow | null
+  pending_qty?: number | null
 }
 
 async function getSession(admin: AdminClient, tgId: number): Promise<SessionState> {
@@ -641,6 +644,10 @@ Deno.serve(async (req) => {
           return new Response('ok', { status: 200 })
         }
         session.flow = detail.flow
+        if (session.pending_qty != null && session.pending_qty >= detail.flow.min && session.pending_qty <= detail.flow.max) {
+          session.flow.quantity = session.pending_qty
+        }
+        session.pending_qty = null
         await saveSession(admin, tgId, session)
         await renderReply(token, chatId, detail.reply)
         return new Response('ok', { status: 200 })
@@ -813,8 +820,26 @@ Deno.serve(async (req) => {
       const target = resolveTarget(text)
       if (target) {
         f.link = target
-        f.step = 'await_qty'
         f.attempts = 0
+        // Quantity already known (parsed from "300 ig followers") → straight to confirm.
+        if (f.quantity != null) {
+          const charge = (f.quantity / 1000) * f.rate
+          const { data: prof } = await admin.from('profiles').select('balance').eq('id', profile.id).single()
+          const balance = prof?.balance ?? 0
+          if (balance < charge) {
+            session.flow = null
+            await saveSession(admin, tgId, session)
+            await sendMessage(token, chatId, `⚠️ That order costs ${charge.toFixed(2)} ${currency}, but your balance is ${balance.toFixed(2)} ${currency}.`)
+            await renderReply(token, chatId, addFundsReply(webAppUrl))
+            return new Response('ok', { status: 200 })
+          }
+          session.pending = { service_id: f.service_id, service_name: f.service_name, link: target, quantity: f.quantity, charge }
+          session.flow = null
+          await saveSession(admin, tgId, session)
+          await sendMessage(token, chatId, `🧾 Order summary:\n${f.quantity.toLocaleString()} × ${f.service_name}\nLink: ${target}\nCharge: ${charge.toFixed(2)} ${currency}\n\nConfirm?`, confirmKeyboard)
+          return new Response('ok', { status: 200 })
+        }
+        f.step = 'await_qty'
         await saveSession(admin, tgId, session)
         await sendMessage(token, chatId, `Got it 👍 Target: ${target}\n\nHow many? Enter a whole number between ${f.min} and ${f.max}.`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
         return new Response('ok', { status: 200 })
@@ -922,7 +947,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fallback (AI unavailable): best-effort keyword match, otherwise the menu.
+    // Fallback (AI unavailable): AI-free order parser first — "300 instagram followers"
+    // → matching services, even when Gemini is rate-limited.
+    const parsed = await parseOrderIntent(admin, text)
+    if (parsed) {
+      if (parsed.services.length === 1) {
+        const s = parsed.services[0]
+        const qty = parsed.quantity != null && parsed.quantity >= s.min && parsed.quantity <= s.max ? parsed.quantity : undefined
+        session.flow = { step: 'await_link', service_id: s.service_id, service_name: s.name, rate: s.rate, min: s.min, max: s.max, quantity: qty, attempts: 0 }
+        await saveSession(admin, tgId, session)
+        const note = qty ? ` (qty: ${qty.toLocaleString()})` : ''
+        await sendMessage(token, chatId, `✅ Found it: ${s.name}${note}\n\n🔗 Send the post link or @username to order.`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
+        return new Response('ok', { status: 200 })
+      }
+      session.pending_qty = parsed.quantity ?? null
+      await saveSession(admin, tgId, session)
+      await renderReply(token, chatId, servicePickerReply(parsed.services))
+      return new Response('ok', { status: 200 })
+    }
+
+    // Otherwise: best-effort keyword match, then the menu.
     if (kw) {
       await handleIntent(admin, token, chatId, profile.id, kw, currency, webAppUrl)
       return new Response('ok', { status: 200 })
