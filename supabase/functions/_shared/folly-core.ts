@@ -138,14 +138,20 @@ export async function ordersReply(admin: AdminClient, userId: string, currency: 
   }
 }
 
-export async function categoriesReply(admin: AdminClient): Promise<Reply> {
-  const { data } = await admin
+// pageSize defaults large so channels with generous button limits (Telegram) show
+// every platform on one page (no nav). Channels with tight limits (WhatsApp lists cap
+// at 10 rows) pass a small pageSize to paginate via `catspage_<n>`.
+export async function categoriesReply(admin: AdminClient, page = 0, pageSize = 100): Promise<Reply> {
+  const { data, count } = await admin
     .from('categories')
-    .select('id, name, icon')
+    .select('id, name, icon', { count: 'exact' })
     .eq('is_active', true)
     .order('sort_order')
+    .range(page * pageSize, page * pageSize + pageSize - 1)
 
   const cats = data ?? []
+  const total = count ?? cats.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
   if (cats.length === 0) return { text: 'No service categories are available right now.', buttons: [[{ id: 'menu_main', title: '⬅ Menu' }]] }
 
   const btns: Btn[] = cats.map((c: Record<string, unknown>) => ({
@@ -155,9 +161,15 @@ export async function categoriesReply(admin: AdminClient): Promise<Reply> {
   // 2 per row
   const rows: Btn[][] = []
   for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2))
+
+  const nav: Btn[] = []
+  if (page > 0) nav.push({ id: `catspage_${page - 1}`, title: '◀ Prev' })
+  if (page < pages - 1) nav.push({ id: `catspage_${page + 1}`, title: 'Next ▶' })
+  if (nav.length) rows.push(nav)
   rows.push([{ id: 'menu_main', title: '⬅ Menu' }])
 
-  return { text: '🔍 Choose a platform:', buttons: rows }
+  const heading = pages > 1 ? `🔍 Choose a platform (page ${page + 1}/${pages}):` : '🔍 Choose a platform:'
+  return { text: heading, buttons: rows }
 }
 
 export async function categoryServicesReply(admin: AdminClient, catId: number, page: number, currency: string): Promise<Reply> {

@@ -55,7 +55,7 @@ const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…
 
 // Render a channel-agnostic Reply as a WhatsApp message: url buttons → links in the
 // body; ≤3 action buttons → reply buttons; more → a list message (up to 10 rows).
-function renderReply(token: string, phoneId: string, to: string, reply: Reply) {
+async function renderReply(token: string, phoneId: string, to: string, reply: Reply) {
   const flat = (reply.buttons ?? []).flat()
   const urlBtns = flat.filter((b) => b.url)
   const actionBtns = flat.filter((b) => !b.url)
@@ -66,8 +66,9 @@ function renderReply(token: string, phoneId: string, to: string, reply: Reply) {
 
   if (actionBtns.length === 0) return sendText(token, phoneId, to, body)
 
+  let res: { error?: unknown }
   if (actionBtns.length <= 3) {
-    return wa(token, phoneId, {
+    res = await wa(token, phoneId, {
       to,
       type: 'interactive',
       interactive: {
@@ -76,18 +77,27 @@ function renderReply(token: string, phoneId: string, to: string, reply: Reply) {
         action: { buttons: actionBtns.map((b) => ({ type: 'reply', reply: { id: b.id.slice(0, 256), title: trunc(b.title, 20) } })) },
       },
     })
+  } else {
+    const rows = actionBtns.slice(0, 10).map((b) => ({ id: b.id.slice(0, 200), title: trunc(b.title, 24) }))
+    res = await wa(token, phoneId, {
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: body },
+        action: { button: 'Select', sections: [{ rows }] },
+      },
+    })
   }
 
-  const rows = actionBtns.slice(0, 10).map((b) => ({ id: b.id.slice(0, 200), title: trunc(b.title, 24) }))
-  return wa(token, phoneId, {
-    to,
-    type: 'interactive',
-    interactive: {
-      type: 'list',
-      body: { text: body },
-      action: { button: 'Select', sections: [{ rows }] },
-    },
-  })
+  // Safety net: if WhatsApp rejects the interactive payload, never leave the user with
+  // nothing — send the same content as plain text (and log the reason).
+  if (res?.error) {
+    console.error('wa interactive send failed:', JSON.stringify(res.error).slice(0, 400))
+    const lines = actionBtns.map((b, i) => `${i + 1}. ${b.title}`).join('\n')
+    return await sendText(token, phoneId, to, `${body}\n\n${lines}`)
+  }
+  return res
 }
 
 const confirmButtons = (token: string, phoneId: string, to: string, text: string) =>
@@ -162,7 +172,7 @@ async function handleIntent(admin: AdminClient, token: string, phoneId: string, 
   switch (intent) {
     case 'balance': reply = await balanceReply(admin, userId, currency); break
     case 'orders': reply = await ordersReply(admin, userId, currency); break
-    case 'services': reply = await categoriesReply(admin); break
+    case 'services': reply = await categoriesReply(admin, 0, 7); break // 7/page → fits WhatsApp's 10-row list
     case 'addfunds': reply = addFundsReply(webAppUrl); break
     case 'help': reply = helpReply(); break
     default: reply = mainMenuReply(); break
@@ -290,6 +300,10 @@ Deno.serve(async (req) => {
           : callbackId === 'menu_addfunds' ? 'addfunds'
           : 'menu'
         await handleIntent(admin, token, phoneId, from, profile.id, intent, currency, webAppUrl)
+        return new Response('ok', { status: 200 })
+      }
+      if (callbackId.startsWith('catspage_')) {
+        await renderReply(token, phoneId, from, await categoriesReply(admin, parseInt(callbackId.slice(9), 10), 7))
         return new Response('ok', { status: 200 })
       }
       if (callbackId.startsWith('catpage_')) {
