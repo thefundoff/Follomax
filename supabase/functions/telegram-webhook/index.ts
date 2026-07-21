@@ -22,6 +22,7 @@ import {
   type OrderFlow,
   matchKeyword,
   isCommandLike,
+  resolveTarget,
   mainMenuReply,
   helpReply,
   addFundsReply,
@@ -368,6 +369,9 @@ async function executeTool(name: string, args: Record<string, unknown>, ctx: Too
 
     if (!serviceId || !link || !Number.isInteger(quantity)) {
       return { error: 'need service_id, link and quantity' }
+    }
+    if (!resolveTarget(link)) {
+      return { error: 'invalid_link', message: 'That link/username looks invalid — ask the user for the post URL or @username, do not guess.' }
     }
 
     const { data: service } = await admin
@@ -786,34 +790,71 @@ Deno.serve(async (req) => {
     }
 
     // ---- Linked: guided ordering flow (deterministic, no AI) ----
+    // Navigation keywords that let the user escape the flow mid-way (not 'services',
+    // since service words like "likes"/"views" can be valid usernames).
+    const flowExitIntents = new Set<Intent>(['menu', 'cancel', 'balance', 'orders', 'addfunds', 'help'])
+
     if (session.flow?.step === 'await_link') {
-      if (/^(cancel|stop|menu)$/i.test(text)) {
+      const f = session.flow
+      const kw = matchKeyword(text)
+
+      // Let the user bail out to a menu action if they clearly changed their mind.
+      if (kw && flowExitIntents.has(kw) && isCommandLike(text) && !/^https?:/i.test(text)) {
         session.flow = null
         await saveSession(admin, tgId, session)
-        await renderReply(token, chatId, mainMenuReply('Cancelled. What next?'))
+        if (kw === 'menu' || kw === 'cancel') await renderReply(token, chatId, mainMenuReply('No problem — cancelled. What next?'))
+        else await handleIntent(admin, token, chatId, profile.id, kw, currency, webAppUrl)
         return new Response('ok', { status: 200 })
       }
-      if (!text) {
-        await sendMessage(token, chatId, 'Please send the link or @username for this order.')
+
+      const target = resolveTarget(text)
+      if (target) {
+        f.link = target
+        f.step = 'await_qty'
+        f.attempts = 0
+        await saveSession(admin, tgId, session)
+        await sendMessage(token, chatId, `Got it 👍 Target: ${target}\n\nHow many? Enter a whole number between ${f.min} and ${f.max}.`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
         return new Response('ok', { status: 200 })
       }
-      session.flow.link = text
-      session.flow.step = 'await_qty'
+
+      // Not a valid link/username — re-prompt, and bail out after repeated misses.
+      f.attempts = (f.attempts ?? 0) + 1
+      if (f.attempts >= 3) {
+        session.flow = null
+        await saveSession(admin, tgId, session)
+        await renderReply(token, chatId, mainMenuReply("Let's start over — pick a service from the menu when you're ready. 🙂"))
+        return new Response('ok', { status: 200 })
+      }
       await saveSession(admin, tgId, session)
-      await sendMessage(token, chatId, `How many? Enter a whole number between ${session.flow.min} and ${session.flow.max}.`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
+      await sendMessage(
+        token,
+        chatId,
+        `That doesn't look like a link or username. Please paste the post link (e.g. https://instagram.com/p/…) or the @username for "${f.service_name}".`,
+        { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] },
+      )
       return new Response('ok', { status: 200 })
     }
     if (session.flow?.step === 'await_qty') {
       const f = session.flow
-      if (/^(cancel|stop|menu)$/i.test(text)) {
+      const kwq = matchKeyword(text)
+      if (kwq && flowExitIntents.has(kwq) && isCommandLike(text)) {
         session.flow = null
         await saveSession(admin, tgId, session)
-        await renderReply(token, chatId, mainMenuReply('Cancelled. What next?'))
+        if (kwq === 'menu' || kwq === 'cancel') await renderReply(token, chatId, mainMenuReply('No problem — cancelled. What next?'))
+        else await handleIntent(admin, token, chatId, profile.id, kwq, currency, webAppUrl)
         return new Response('ok', { status: 200 })
       }
-      const qty = parseInt(text.replace(/[,_\s]/g, ''), 10)
+      const qty = /^[\d,_\s]+$/.test(text) ? parseInt(text.replace(/[,_\s]/g, ''), 10) : NaN
       if (!Number.isInteger(qty) || qty < f.min || qty > f.max) {
-        await sendMessage(token, chatId, `Please enter a whole number between ${f.min} and ${f.max}.`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
+        f.attempts = (f.attempts ?? 0) + 1
+        if (f.attempts >= 3) {
+          session.flow = null
+          await saveSession(admin, tgId, session)
+          await renderReply(token, chatId, mainMenuReply("Let's start over when you're ready — pick a service from the menu. 🙂"))
+          return new Response('ok', { status: 200 })
+        }
+        await saveSession(admin, tgId, session)
+        await sendMessage(token, chatId, `Please enter just a whole number between ${f.min} and ${f.max} (e.g. ${f.min}).`, { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'flow_cancel' }]] })
         return new Response('ok', { status: 200 })
       }
       const charge = (qty / 1000) * f.rate

@@ -47,6 +47,24 @@ export function isCommandLike(raw: string): boolean {
   return t.startsWith('/') || t.split(/\s+/).length <= 4
 }
 
+// Validate/extract an order target (post link or @username) from a user's message.
+// Returns the cleaned target, or null if the message is a sentence/question rather
+// than a link — so the bot can re-prompt instead of ordering to garbage.
+export function resolveTarget(raw: string): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  // A URL anywhere in the message wins (handles "here it is https://…").
+  const url = t.match(/https?:\/\/[^\s]+/i)?.[0]
+  if (url) return url
+  // Beyond a URL, a real target is a single token — reject sentences/questions.
+  if (/\s/.test(t) || t.endsWith('?')) return null
+  // Bare domain like instagram.com/xyz
+  if (/^(www\.)?[\w-]+\.[a-z]{2,}(\/[^\s]*)?$/i.test(t)) return t
+  // @handle or a plain username/handle
+  if (/^@?[\w.\-]{2,40}$/.test(t)) return t.replace(/^@+/, '@')
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Static replies
 // ---------------------------------------------------------------------------
@@ -182,6 +200,7 @@ export interface OrderFlow {
   min: number
   max: number
   link?: string
+  attempts?: number
 }
 
 // Returns the service detail prompt and the flow to store, or null if not found.
