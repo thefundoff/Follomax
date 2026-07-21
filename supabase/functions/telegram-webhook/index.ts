@@ -703,6 +703,7 @@ Deno.serve(async (req) => {
     const chatId = chat.id
     const text = typeof message.text === 'string' ? message.text.trim() : ''
     const contact = message.contact as { phone_number: string; user_id?: number } | undefined
+    const messageId = message.message_id as number | undefined
 
     const session = await getSession(admin, tgId)
     const profile = await resolveProfile(admin, tgId)
@@ -755,11 +756,14 @@ Deno.serve(async (req) => {
         }
         session.auth = { step: 'awaiting_password', email: text.toLowerCase() }
         await saveSession(admin, tgId, session)
-        await sendMessage(token, chatId, '🔒 Now send your password. (You can delete your message afterwards — it stays private.)')
+        await sendMessage(token, chatId, "🔒 Now send your password — I'll delete your message the instant I read it, so it never stays in the chat.")
         return new Response('ok', { status: 200 })
       }
 
       if (step === 'awaiting_password') {
+        // Wipe the password from the chat immediately (bots can delete incoming
+        // messages in private chats) so it never lingers.
+        if (messageId) await tg(token, 'deleteMessage', { chat_id: chatId, message_id: messageId })
         const email = session.auth?.email || ''
         const result = await verifyLogin(admin, email, text)
         if (!result.ok) {
