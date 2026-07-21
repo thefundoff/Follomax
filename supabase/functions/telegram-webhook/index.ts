@@ -551,7 +551,7 @@ Deno.serve(async (req) => {
 
   const token = await getSetting(admin, 'telegram_bot_token')
   const currency = (await getSetting(admin, 'currency')) || 'NGN'
-  const model = (await getSetting(admin, 'gemini_model')) || 'gemini-2.5-flash'
+  const model = (await getSetting(admin, 'gemini_model')) || 'gemini-flash-latest'
   const geminiKey = await getSetting(admin, 'gemini_api_key')
   const webAppUrl = (await getSetting(admin, 'web_app_url')) || ''
 

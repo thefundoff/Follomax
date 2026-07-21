@@ -45,6 +45,6 @@ INSERT INTO app_settings (key, value) VALUES
   ('telegram_bot_username',   '"YourBotUsername"'),
   ('telegram_webhook_secret', '"REPLACE_WITH_A_LONG_RANDOM_STRING"'),
   ('gemini_api_key',          '"REPLACE_WITH_YOUR_GEMINI_API_KEY"'),
-  ('gemini_model',            '"gemini-2.5-flash"'),
+  ('gemini_model',            '"gemini-flash-latest"'),
   ('web_app_url',             '"https://follomax.com"')
 ON CONFLICT (key) DO NOTHING;

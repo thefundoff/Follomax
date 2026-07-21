@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const { live = false } = await req.json().catch(() => ({}))
 
     const apiKey = await getSetting(admin, 'gemini_api_key')
-    const model = (await getSetting(admin, 'gemini_model')) || 'gemini-2.5-flash'
+    const model = (await getSetting(admin, 'gemini_model')) || 'gemini-flash-latest'
     const configured = !!apiKey && !apiKey.startsWith('REPLACE_')
 
     const lastOk = await getJsonSetting(admin, 'gemini_last_ok')

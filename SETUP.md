@@ -120,8 +120,8 @@ UPDATE app_settings SET value = '"YourBotUsername"'                 WHERE key = 
 UPDATE app_settings SET value = '"a-long-random-webhook-secret"'    WHERE key = 'telegram_webhook_secret';
 UPDATE app_settings SET value = '"your-gemini-api-key"'             WHERE key = 'gemini_api_key';
 UPDATE app_settings SET value = '"https://your-follomax-domain.com"' WHERE key = 'web_app_url';
--- optional: change the model (default gemini-2.5-flash)
--- UPDATE app_settings SET value = '"gemini-2.0-flash"' WHERE key = 'gemini_model';
+-- optional: change the model (default gemini-flash-latest — must support generateContent + tools)
+-- UPDATE app_settings SET value = '"gemini-flash-latest"' WHERE key = 'gemini_model';
 ```
 
 **Deploy & disable JWT verification.** Telegram sends no Supabase JWT, so the webhook
