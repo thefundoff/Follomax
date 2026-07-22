@@ -84,10 +84,10 @@ export function FollyChat() {
 
   return (
     <>
-      {/* Launcher */}
+      {/* Launcher — stacked above the WhatsApp support button (which sits at bottom-5) */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-brand shadow-brand flex items-center justify-center text-white hover:scale-105 transition-transform"
+        className="fixed bottom-24 right-5 z-50 w-14 h-14 rounded-full bg-gradient-brand shadow-brand flex items-center justify-center text-white hover:scale-105 transition-transform"
         aria-label="Chat with Folly"
       >
         {open ? <X className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
@@ -100,7 +100,7 @@ export function FollyChat() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ duration: 0.18 }}
-            className="fixed bottom-24 right-6 z-50 w-[370px] max-w-[calc(100vw-3rem)] h-[540px] max-h-[72vh] flex flex-col rounded-2xl bg-navy-800 border border-navy-500/50 shadow-2xl overflow-hidden"
+            className="fixed bottom-40 right-5 z-50 w-[370px] max-w-[calc(100vw-2.5rem)] h-[520px] max-h-[68vh] flex flex-col rounded-2xl bg-navy-800 border border-navy-500/50 shadow-2xl overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-navy-500/50 bg-navy-800">
