@@ -22,6 +22,36 @@ export function useAdminUsers(page = 1, pageSize = 20, search = '') {
   })
 }
 
+// Linked bot users — profiles reachable on a chat channel (Telegram or WhatsApp).
+// Frontend-only: reads existing profile fields. There is no stored @username, so the
+// UI shows full_name plus the channel identifier (Telegram numeric id / WhatsApp phone).
+export interface BotUser {
+  id: string
+  full_name: string | null
+  email: string
+  telegram_user_id: number | null
+  whatsapp_id: string | null
+  phone_number: string | null
+  created_at: string
+}
+
+export function useAdminBotUsers(page = 1, pageSize = 20) {
+  return useQuery({
+    queryKey: ['admin-bot-users', page],
+    queryFn: async () => {
+      const { data, error, count } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, telegram_user_id, whatsapp_id, phone_number, created_at', { count: 'exact' })
+        .or('telegram_user_id.not.is.null,whatsapp_id.not.is.null')
+        .order('created_at', { ascending: false })
+        .range((page - 1) * pageSize, page * pageSize - 1)
+      if (error) throw error
+      return { users: (data ?? []) as BotUser[], total: count ?? 0 }
+    },
+    staleTime: 1000 * 60,
+  })
+}
+
 export function useAdminUpdateUser() {
   const qc = useQueryClient()
 
@@ -245,13 +275,21 @@ export function useAdminStats() {
   return useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
-      const [usersRes, ordersRes, depositsRes, revenueRes] = await Promise.all([
+      const [usersRes, ordersRes, depositsRes, revenueRes, telegramRes, whatsappRes, botRes] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id', { count: 'exact', head: true })
           .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
         supabase.from('deposit_requests').select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
         supabase.from('transactions').select('amount').eq('type', 'deposit').eq('status', 'completed'),
+        // Bot users = profiles reachable on a chat channel. Counted separately per
+        // channel plus a combined count (a user linked on both would double-count if summed).
+        supabase.from('profiles').select('id', { count: 'exact', head: true })
+          .not('telegram_user_id', 'is', null),
+        supabase.from('profiles').select('id', { count: 'exact', head: true })
+          .not('whatsapp_id', 'is', null),
+        supabase.from('profiles').select('id', { count: 'exact', head: true })
+          .or('telegram_user_id.not.is.null,whatsapp_id.not.is.null'),
       ])
 
       return {
@@ -259,6 +297,9 @@ export function useAdminStats() {
         orders_today: ordersRes.count ?? 0,
         pending_deposits: depositsRes.count ?? 0,
         total_revenue: revenueRes.data?.reduce((s, t) => s + t.amount, 0) ?? 0,
+        telegram_users: telegramRes.count ?? 0,
+        whatsapp_users: whatsappRes.count ?? 0,
+        bot_users: botRes.count ?? 0,
       }
     },
     staleTime: 1000 * 60,

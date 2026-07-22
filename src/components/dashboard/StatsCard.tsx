@@ -11,13 +11,14 @@ interface StatsCardProps {
   iconBg?: string
   change?: string
   changePositive?: boolean
+  subtitle?: string
   isLoading?: boolean
   delay?: number
 }
 
 export function StatsCard({
   label, value, icon: Icon, iconColor = 'text-brand-400', iconBg = 'bg-brand-500/15',
-  change, changePositive = true, isLoading, delay = 0,
+  change, changePositive = true, subtitle, isLoading, delay = 0,
 }: StatsCardProps) {
   if (isLoading) {
     return (
@@ -44,6 +45,9 @@ export function StatsCard({
             <p className={cn('text-xs mt-1.5 font-medium', changePositive ? 'text-green-400' : 'text-red-400')}>
               {changePositive ? '↑' : '↓'} {change}
             </p>
+          )}
+          {subtitle && (
+            <p className="text-xs mt-1.5 font-medium text-gray-500">{subtitle}</p>
           )}
         </div>
         <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
