@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Send, X, Check } from 'lucide-react'
+import { Sparkles, Send, X, Check, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
+import { useAuth } from '@/context/AuthContext'
 import { follySend, follyPlace, type FollyPending } from '@/hooks/useFollyChat'
 
 interface ChatMessage {
@@ -23,16 +24,46 @@ const WELCOME: ChatMessage = {
 
 export function FollyChat() {
   const qc = useQueryClient()
+  const { user } = useAuth()
+  const storageKey = user ? `folly-chat:${user.id}` : null
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [currency, setCurrency] = useState('NGN')
+  const [loaded, setLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Restore the saved conversation for this user (survives reloads / navigation).
+  useEffect(() => {
+    setLoaded(false)
+    if (!storageKey) return
+    try {
+      const raw = localStorage.getItem(storageKey)
+      const parsed = raw ? JSON.parse(raw) : null
+      setMessages(Array.isArray(parsed) && parsed.length ? parsed : [WELCOME])
+    } catch {
+      setMessages([WELCOME])
+    }
+    setLoaded(true)
+  }, [storageKey])
+
+  // Persist on every change (once restored, so we never clobber the saved chat).
+  useEffect(() => {
+    if (!storageKey || !loaded) return
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages.slice(-50)))
+    } catch { /* quota/full — ignore */ }
+  }, [messages, storageKey, loaded])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, open, loading])
+
+  const clearChat = () => {
+    setMessages([WELCOME])
+    if (storageKey) { try { localStorage.removeItem(storageKey) } catch { /* ignore */ } }
+  }
 
   const send = async () => {
     const text = input.trim()
@@ -111,6 +142,9 @@ export function FollyChat() {
                 <p className="text-sm font-semibold text-white">Folly</p>
                 <p className="text-xs text-gray-400">Your Follomax assistant</p>
               </div>
+              <button onClick={clearChat} title="Clear chat" className="text-gray-400 hover:text-white transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white transition-colors">
                 <X className="w-5 h-5" />
               </button>
