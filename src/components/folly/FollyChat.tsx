@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Send, X, Check, Trash2 } from 'lucide-react'
+import { Send, X, Check, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
@@ -118,10 +118,14 @@ export function FollyChat() {
       {/* Launcher — stacked above the WhatsApp support button (which sits at bottom-5) */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-24 right-5 z-50 w-14 h-14 rounded-full bg-gradient-brand shadow-brand flex items-center justify-center text-white hover:scale-105 transition-transform"
+        className="fixed bottom-24 right-5 z-50 w-14 h-14 rounded-full shadow-brand overflow-hidden ring-2 ring-brand-500/50 flex items-center justify-center text-white hover:scale-105 transition-transform"
         aria-label="Chat with Folly"
       >
-        {open ? <X className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
+        {open ? (
+          <span className="w-full h-full bg-gradient-brand flex items-center justify-center"><X className="w-6 h-6" /></span>
+        ) : (
+          <img src="/folly-avatar.jpg" alt="Folly" className="w-full h-full object-cover object-[center_38%]" />
+        )}
       </button>
 
       <AnimatePresence>
@@ -135,8 +139,8 @@ export function FollyChat() {
           >
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-navy-500/50 bg-navy-800">
-              <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-white" />
+              <div className="w-9 h-9 rounded-xl overflow-hidden bg-navy-900 flex-shrink-0">
+                <img src="/folly-avatar.jpg" alt="Folly" className="w-full h-full object-cover" />
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-white">Folly</p>
