@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { notifyOrderStatus } from '../_shared/notify.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,6 +118,7 @@ Deno.serve(async (req) => {
         const newStatus = STATUS_MAP[result.status] || order.status
         const startCount = result.start_count ? parseInt(result.start_count) : null
         const remains = result.remains ? parseInt(result.remains) : null
+        const statusChanged = newStatus !== order.status
 
         await adminClient.from('orders').update({
           status: newStatus,
@@ -137,6 +139,11 @@ Deno.serve(async (req) => {
             adminClient, order.user_id, order.id, refundAmount,
             `Refund for order #${order.id.slice(0, 8)} — ${remains} undelivered`
           )
+        }
+
+        // Alert the user (Telegram / WhatsApp / web) on a real status change.
+        if (statusChanged && ['completed', 'partial', 'cancelled', 'error'].includes(newStatus)) {
+          await notifyOrderStatus(adminClient, order.id, newStatus)
         }
 
         updated++
@@ -183,11 +190,13 @@ Deno.serve(async (req) => {
             )
           }
 
+          const dripStatus = runsDone > 1 ? 'partial' : 'cancelled'
           await adminClient.from('orders').update({
-            status: runsDone > 1 ? 'partial' : 'cancelled',
+            status: dripStatus,
             drip_next_run_at: null,
             error_message: `Run ${runsDone} was cancelled by the provider. ${undeliveredRuns} run(s) refunded.`,
           }).eq('id', dripOrder.id)
+          await notifyOrderStatus(adminClient, dripOrder.id, dripStatus)
 
           console.log(`Organix cancelled at run ${runsDone}/${runsTotal} for order ${dripOrder.id}, refunded ${undeliveredRuns} run(s)`)
           continue

@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
 import { follyChat, type FollyBtn, type FollyFlow, type FollyPending } from '@/hooks/useFollyChat'
+import { useUnreadNotifications, markNotificationsRead } from '@/hooks/useNotifications'
 
 interface ChatMessage {
   id: string
@@ -47,6 +48,16 @@ export function FollyChat() {
   const [currency, setCurrency] = useState('NGN')
   const [loaded, setLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { data: unread = [] } = useUnreadNotifications()
+
+  // When Folly is opened, show any unread order alerts as messages and mark them read.
+  useEffect(() => {
+    if (!open || unread.length === 0) return
+    const ids = unread.map((n) => n.id)
+    setMessages((m) => [...m, ...unread.map((n) => ({ id: uid(), role: 'assistant' as const, text: `🔔 ${n.title}\n${n.body}` }))])
+    markNotificationsRead(ids).then(() => qc.invalidateQueries({ queryKey: ['notifications', 'unread'] }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Restore saved conversation (survives reloads / navigation).
   useEffect(() => {
@@ -133,17 +144,24 @@ export function FollyChat() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-24 right-5 z-50 w-14 h-14 rounded-full shadow-brand overflow-hidden ring-2 ring-brand-500/50 flex items-center justify-center text-white hover:scale-105 transition-transform"
-        aria-label="Chat with Folly"
-      >
-        {open ? (
-          <span className="w-full h-full bg-gradient-brand flex items-center justify-center"><X className="w-6 h-6" /></span>
-        ) : (
-          <img src="/folly-avatar.jpg" alt="Folly" className="w-full h-full object-cover object-[center_38%]" />
+      <div className="fixed bottom-24 right-5 z-50">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="w-14 h-14 rounded-full shadow-brand overflow-hidden ring-2 ring-brand-500/50 flex items-center justify-center text-white hover:scale-105 transition-transform"
+          aria-label="Chat with Folly"
+        >
+          {open ? (
+            <span className="w-full h-full bg-gradient-brand flex items-center justify-center"><X className="w-6 h-6" /></span>
+          ) : (
+            <img src="/folly-avatar.jpg" alt="Folly" className="w-full h-full object-cover object-[center_38%]" />
+          )}
+        </button>
+        {!open && unread.length > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-navy-900">
+            {unread.length > 9 ? '9+' : unread.length}
+          </span>
         )}
-      </button>
+      </div>
 
       <AnimatePresence>
         {open && (
