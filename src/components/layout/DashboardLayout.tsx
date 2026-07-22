@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { SocialProof } from '@/components/ui/SocialProof'
+import { FollyChat } from '@/components/folly/FollyChat'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -21,6 +22,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
         </main>
       </div>
       <SocialProof />
+      <FollyChat />
     </div>
   )
 }
