@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
+export interface FollyBtn { id: string; title: string; url?: string }
+
 export interface FollyPending {
   service_id: number
   service_name: string
@@ -8,31 +10,35 @@ export interface FollyPending {
   charge: number
 }
 
-export interface FollyMessageResult {
+export interface FollyFlow {
+  step: 'await_link' | 'await_qty'
+  service_id: number
+  service_name: string
+  rate: number
+  min: number
+  max: number
+  link?: string
+  attempts?: number
+  quantity?: number
+}
+
+export interface FollyResult {
   reply: string
+  buttons: FollyBtn[][] | null
+  flow: FollyFlow | null
   pending: FollyPending | null
   currency?: string
+  order_placed?: boolean
 }
 
-export interface FollyPlaceResult {
-  ok: boolean
-  order_id?: string
-  balance?: number
-  currency?: string
-  error?: string
-  code?: string
-}
-
-export async function follySend(message: string, history: { role: 'user' | 'model'; text: string }[]): Promise<FollyMessageResult> {
-  const { data, error } = await supabase.functions.invoke('folly-chat', { body: { action: 'message', message, history } })
+export async function follyChat(params: {
+  message?: string
+  button_id?: string
+  history: { role: 'user' | 'model'; text: string }[]
+  flow: FollyFlow | null
+  pending: FollyPending | null
+}): Promise<FollyResult> {
+  const { data, error } = await supabase.functions.invoke('folly-chat', { body: params })
   if (error) throw error
-  return data as FollyMessageResult
-}
-
-export async function follyPlace(p: FollyPending): Promise<FollyPlaceResult> {
-  const { data, error } = await supabase.functions.invoke('folly-chat', {
-    body: { action: 'place', service_id: p.service_id, link: p.link, quantity: p.quantity },
-  })
-  if (error) throw error
-  return data as FollyPlaceResult
+  return data as FollyResult
 }

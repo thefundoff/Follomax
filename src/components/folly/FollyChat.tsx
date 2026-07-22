@@ -1,25 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, X, Check, Trash2 } from 'lucide-react'
+import { Send, X, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
-import { follySend, follyPlace, type FollyPending } from '@/hooks/useFollyChat'
+import { follyChat, type FollyBtn, type FollyFlow, type FollyPending } from '@/hooks/useFollyChat'
 
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
-  pending?: FollyPending | null
-  resolved?: boolean // pending confirmed/cancelled
+  buttons?: FollyBtn[][] | null
 }
 
 const uid = () => Math.random().toString(36).slice(2)
 
-const WELCOME: ChatMessage = {
+// Client-side quick actions (ids match the folly-chat handler).
+const QUICK_ACTIONS: FollyBtn[][] = [
+  [{ id: 'menu_balance', title: '💰 Balance' }, { id: 'menu_orders', title: '📦 My Orders' }],
+  [{ id: 'menu_services', title: '🔍 Order Services' }, { id: 'menu_addfunds', title: '➕ Add Funds' }],
+]
+
+const welcome = (): ChatMessage => ({
   id: 'welcome',
   role: 'assistant',
-  text: "Hi! I'm Folly 🤖 — ask me anything. Try “what Instagram services do you have?”, “send 1000 likes to <link>”, or “what's my balance?”.",
+  text: "Hi! I'm Folly 🤖 — tap an option below, or just tell me what you need (e.g. “1000 Instagram likes”).",
+  buttons: QUICK_ACTIONS,
+})
+
+function chipClass(id: string): string {
+  if (id === 'confirm_order') return 'bg-green-600 hover:bg-green-500 text-white'
+  if (id === 'cancel_order' || id === 'flow_cancel') return 'bg-navy-600 hover:bg-navy-500 text-gray-200'
+  return 'bg-navy-700 hover:bg-navy-600 text-brand-200 border border-brand-500/30'
 }
 
 export function FollyChat() {
@@ -27,57 +39,76 @@ export function FollyChat() {
   const { user } = useAuth()
   const storageKey = user ? `folly-chat:${user.id}` : null
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME])
+  const [messages, setMessages] = useState<ChatMessage[]>([welcome()])
+  const [flow, setFlow] = useState<FollyFlow | null>(null)
+  const [pending, setPending] = useState<FollyPending | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [currency, setCurrency] = useState('NGN')
   const [loaded, setLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Restore the saved conversation for this user (survives reloads / navigation).
+  // Restore saved conversation (survives reloads / navigation).
   useEffect(() => {
     setLoaded(false)
     if (!storageKey) return
     try {
       const raw = localStorage.getItem(storageKey)
-      const parsed = raw ? JSON.parse(raw) : null
-      setMessages(Array.isArray(parsed) && parsed.length ? parsed : [WELCOME])
+      const s = raw ? JSON.parse(raw) : null
+      if (s && Array.isArray(s.messages) && s.messages.length) {
+        setMessages(s.messages)
+        setFlow(s.flow ?? null)
+        setPending(s.pending ?? null)
+      } else setMessages([welcome()])
     } catch {
-      setMessages([WELCOME])
+      setMessages([welcome()])
     }
     setLoaded(true)
   }, [storageKey])
 
-  // Persist on every change (once restored, so we never clobber the saved chat).
   useEffect(() => {
     if (!storageKey || !loaded) return
     try {
-      localStorage.setItem(storageKey, JSON.stringify(messages.slice(-50)))
-    } catch { /* quota/full — ignore */ }
-  }, [messages, storageKey, loaded])
+      localStorage.setItem(storageKey, JSON.stringify({ messages: messages.slice(-50), flow, pending }))
+    } catch { /* ignore */ }
+  }, [messages, flow, pending, storageKey, loaded])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, open, loading])
 
   const clearChat = () => {
-    setMessages([WELCOME])
+    setMessages([welcome()])
+    setFlow(null)
+    setPending(null)
     if (storageKey) { try { localStorage.removeItem(storageKey) } catch { /* ignore */ } }
+  }
+
+  const historyFor = (msgs: ChatMessage[]) =>
+    msgs.filter((m) => m.id !== 'welcome').map((m) => ({ role: m.role === 'assistant' ? ('model' as const) : ('user' as const), text: m.text }))
+
+  const applyResult = (res: Awaited<ReturnType<typeof follyChat>>) => {
+    if (res.currency) setCurrency(res.currency)
+    setFlow(res.flow ?? null)
+    setPending(res.pending ?? null)
+    setMessages((m) => [...m, { id: uid(), role: 'assistant', text: res.reply, buttons: res.buttons }])
+    if (res.order_placed) {
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      qc.invalidateQueries({ queryKey: ['balance'] })
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+    }
   }
 
   const send = async () => {
     const text = input.trim()
     if (!text || loading) return
     setInput('')
-    const history = messages
-      .filter((m) => m.id !== 'welcome')
-      .map((m) => ({ role: m.role === 'assistant' ? ('model' as const) : ('user' as const), text: m.text }))
+    const history = historyFor(messages)
     setMessages((m) => [...m, { id: uid(), role: 'user', text }])
     setLoading(true)
     try {
-      const res = await follySend(text, history)
-      if (res.currency) setCurrency(res.currency)
-      setMessages((m) => [...m, { id: uid(), role: 'assistant', text: res.reply, pending: res.pending }])
+      applyResult(await follyChat({ message: text, history, flow, pending }))
     } catch {
       setMessages((m) => [...m, { id: uid(), role: 'assistant', text: '😕 I could not reach the server. Please try again.' }])
     } finally {
@@ -85,37 +116,23 @@ export function FollyChat() {
     }
   }
 
-  const confirm = async (msgId: string, pending: FollyPending) => {
+  const clickButton = async (btn: FollyBtn) => {
+    if (loading) return
+    if (btn.url) { window.open(btn.url, '_blank', 'noopener'); return }
+    const history = historyFor(messages)
+    setMessages((m) => [...m, { id: uid(), role: 'user', text: btn.title }])
     setLoading(true)
     try {
-      const res = await follyPlace(pending)
-      setMessages((m) => m.map((x) => (x.id === msgId ? { ...x, resolved: true } : x)))
-      if (res.ok) {
-        setMessages((m) => [...m, { id: uid(), role: 'assistant', text: `✅ Order placed! #${res.order_id?.slice(0, 8)} — now processing.\nNew balance: ${res.balance?.toFixed(2)} ${res.currency ?? currency}` }])
-        qc.invalidateQueries({ queryKey: ['profile'] })
-        qc.invalidateQueries({ queryKey: ['balance'] })
-        qc.invalidateQueries({ queryKey: ['orders'] })
-        qc.invalidateQueries({ queryKey: ['transactions'] })
-      } else if (res.code === 'insufficient_balance') {
-        setMessages((m) => [...m, { id: uid(), role: 'assistant', text: '⚠️ Your balance is too low for that order. Add funds and try again.' }])
-      } else {
-        setMessages((m) => [...m, { id: uid(), role: 'assistant', text: `⚠️ Could not place that order: ${res.error}. You were not charged.` }])
-      }
+      applyResult(await follyChat({ button_id: btn.id, history, flow, pending }))
     } catch {
-      toast.error('Failed to place order')
+      toast.error('Something went wrong')
     } finally {
       setLoading(false)
     }
   }
 
-  const cancel = (msgId: string) => {
-    setMessages((m) => m.map((x) => (x.id === msgId ? { ...x, resolved: true } : x)))
-    setMessages((m) => [...m, { id: uid(), role: 'assistant', text: 'No problem — cancelled. Anything else? 👍' }])
-  }
-
   return (
     <>
-      {/* Launcher — stacked above the WhatsApp support button (which sits at bottom-5) */}
       <button
         onClick={() => setOpen((o) => !o)}
         className="fixed bottom-24 right-5 z-50 w-14 h-14 rounded-full shadow-brand overflow-hidden ring-2 ring-brand-500/50 flex items-center justify-center text-white hover:scale-105 transition-transform"
@@ -157,25 +174,26 @@ export function FollyChat() {
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((m) => (
-                <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-navy-700 text-gray-100'}`}>
-                    {m.text}
-                    {m.pending && !m.resolved && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-gray-300 mb-2">
-                          {m.pending.quantity.toLocaleString()} × {m.pending.service_name} — {m.pending.charge.toFixed(2)} {currency}
-                        </p>
-                        <div className="flex gap-2">
-                          <button onClick={() => confirm(m.id, m.pending!)} disabled={loading} className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-medium py-1.5 disabled:opacity-50">
-                            <Check className="w-3.5 h-3.5" /> Confirm
-                          </button>
-                          <button onClick={() => cancel(m.id)} disabled={loading} className="flex-1 rounded-lg bg-navy-600 hover:bg-navy-500 text-gray-200 text-xs font-medium py-1.5 disabled:opacity-50">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                <div key={m.id} className="space-y-2">
+                  <div className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-navy-700 text-gray-100'}`}>
+                      {m.text}
+                    </div>
                   </div>
+                  {m.role === 'assistant' && m.buttons && m.buttons.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {m.buttons.flat().map((b, i) => (
+                        <button
+                          key={b.id + i}
+                          onClick={() => clickButton(b)}
+                          disabled={loading}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${chipClass(b.id)}`}
+                        >
+                          {b.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {loading && (
