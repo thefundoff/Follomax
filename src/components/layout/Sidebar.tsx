@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet, User, Settings,
   LogOut, Users, BarChart3, DollarSign, ChevronLeft, ChevronRight, Store, X, Zap, MessageSquare,
+  Rocket, Layers, TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -12,6 +13,7 @@ import { useState } from 'react'
 const userNav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/orders/new', icon: ShoppingCart, label: 'New Order' },
+  { to: '/booster', icon: Rocket, label: 'Algorithm Booster' },
   { to: '/orders', icon: Package, label: 'My Orders' },
   { to: '/funds', icon: Wallet, label: 'Add Funds' },
   { to: '/profile', icon: User, label: 'Profile' },
@@ -25,8 +27,10 @@ const merchantNav = [
 
 const adminNav = [
   { to: '/admin', icon: BarChart3, label: 'Overview' },
+  { to: '/admin/analytics', icon: TrendingUp, label: 'Analytics' },
   { to: '/admin/users', icon: Users, label: 'Users' },
   { to: '/admin/services', icon: Zap, label: 'Services' },
+  { to: '/admin/combos', icon: Layers, label: 'Combos' },
   { to: '/admin/orders', icon: Package, label: 'Orders' },
   { to: '/admin/transactions', icon: DollarSign, label: 'Transactions' },
   { to: '/admin/support', icon: MessageSquare, label: 'Support' },

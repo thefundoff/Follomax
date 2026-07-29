@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
@@ -8,6 +9,7 @@ import { AuthGuard } from '@/guards/AuthGuard'
 import { AdminGuard } from '@/guards/AdminGuard'
 import { MerchantGuard } from '@/guards/MerchantGuard'
 import { WhatsAppSupport } from '@/components/WhatsAppSupport'
+import { ComboPromoModal } from '@/components/ComboPromoModal'
 
 import { LandingPage } from '@/pages/LandingPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -16,6 +18,7 @@ import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { NewOrderPage } from '@/pages/NewOrderPage'
+import { AlgorithmBoosterPage } from '@/pages/AlgorithmBoosterPage'
 import { OrdersPage } from '@/pages/OrdersPage'
 import { AddFundsPage } from '@/pages/AddFundsPage'
 import { ProfilePage } from '@/pages/ProfilePage'
@@ -24,6 +27,9 @@ import { MerchantUsersPage } from '@/pages/merchant/MerchantUsersPage'
 import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage'
 import { AdminUsersPage } from '@/pages/admin/AdminUsersPage'
 import { AdminServicesPage } from '@/pages/admin/AdminServicesPage'
+import { AdminCombosPage } from '@/pages/admin/AdminCombosPage'
+// Charts (recharts) are code-split so they only load when an admin opens Analytics
+const AdminAnalyticsPage = lazy(() => import('@/pages/admin/AdminAnalyticsPage'))
 import { AdminOrdersPage } from '@/pages/admin/AdminOrdersPage'
 import { AdminTransactionsPage } from '@/pages/admin/AdminTransactionsPage'
 import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage'
@@ -59,6 +65,7 @@ export default function App() {
             <Route element={<AuthGuard />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/orders/new" element={<NewOrderPage />} />
+              <Route path="/booster" element={<AlgorithmBoosterPage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/funds" element={<AddFundsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
@@ -72,8 +79,17 @@ export default function App() {
 
             <Route element={<AdminGuard />}>
               <Route path="/admin" element={<AdminDashboardPage />} />
+              <Route
+                path="/admin/analytics"
+                element={
+                  <Suspense fallback={<div className="min-h-screen bg-navy-900 flex items-center justify-center"><div className="w-8 h-8 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" /></div>}>
+                    <AdminAnalyticsPage />
+                  </Suspense>
+                }
+              />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/services" element={<AdminServicesPage />} />
+              <Route path="/admin/combos" element={<AdminCombosPage />} />
               <Route path="/admin/orders" element={<AdminOrdersPage />} />
               <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
               <Route path="/admin/settings" element={<AdminSettingsPage />} />
@@ -85,6 +101,7 @@ export default function App() {
           </Routes>
 
           <WhatsAppSupport />
+          <ComboPromoModal />
         </BrowserRouter>
 
         <Toaster

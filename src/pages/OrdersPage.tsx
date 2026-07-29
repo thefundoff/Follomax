@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Search, ExternalLink, Info, Repeat, Copy, Check } from 'lucide-react'
+import { RefreshCw, Search, ExternalLink, Info, Repeat, Copy, Check, Rocket } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useOrders } from '@/hooks/useOrders'
@@ -98,7 +98,14 @@ export function OrdersPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-xl flex-shrink-0">{order.services?.categories?.icon || getPlatformIcon(order.services?.name || '')}</span>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{order.services?.name || 'Unknown'}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-white truncate">{order.services?.name || 'Unknown'}</p>
+                          {order.combo_label && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-brand-300 bg-brand-500/15 rounded px-1.5 py-0.5 flex-shrink-0">
+                              <Rocket className="w-2.5 h-2.5" /> Combo
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1 mt-0.5">
                           <ExternalLink className="w-3 h-3 text-gray-600 flex-shrink-0" />
                           <span className="text-xs text-gray-500 truncate">{truncateUrl(order.link, 28)}</span>
@@ -143,7 +150,14 @@ export function OrdersPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-lg">{order.services?.categories?.icon || getPlatformIcon(order.services?.name || '')}</span>
                             <div>
-                              <p className="text-sm text-white font-medium max-w-[160px] truncate">{order.services?.name || 'Unknown'}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm text-white font-medium max-w-[160px] truncate">{order.services?.name || 'Unknown'}</p>
+                                {order.combo_label && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-brand-300 bg-brand-500/15 rounded px-1.5 py-0.5 flex-shrink-0">
+                                    <Rocket className="w-2.5 h-2.5" /> Combo
+                                  </span>
+                                )}
+                              </div>
                               {order.services?.type && <p className="text-xs text-gray-500">{order.services.type}</p>}
                             </div>
                           </div>
