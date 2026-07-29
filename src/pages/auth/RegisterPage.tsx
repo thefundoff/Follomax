@@ -86,6 +86,7 @@ export function RegisterPage() {
       return
     }
     toast.success('Account created! Welcome to Follomax.')
+    sessionStorage.setItem('follomax:show_combo_promo', '1')
     navigate('/dashboard')
   }
 

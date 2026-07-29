@@ -102,6 +102,7 @@ export function LoginPage() {
       return
     }
     clearFailedAttempts()
+    sessionStorage.setItem('follomax:show_combo_promo', '1')
     navigate('/dashboard')
   }
 

@@ -169,14 +169,23 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Comment services keep their provider minimum; every other service
+      // must have a minimum of at least 100, but never above its own max.
+      const isComment = !!svc.type && svc.type.toLowerCase().includes('comment')
+      const providerMin = parseInt(svc.min)
+      const providerMax = parseInt(svc.max)
+      const minQuantity = isComment
+        ? providerMin
+        : Math.min(Math.max(providerMin, 100), providerMax)
+
       const serviceRow = {
         exobooster_id: svc.service,
         category_id: categoryCache[catName] || null,
         name: svc.name,
         type: svc.type || null,
         rate: parseFloat(svc.rate),
-        min_quantity: parseInt(svc.min),
-        max_quantity: parseInt(svc.max),
+        min_quantity: minQuantity,
+        max_quantity: providerMax,
         description: svc.description || null,
         refill: svc.refill || false,
         cancel: svc.cancel || false,

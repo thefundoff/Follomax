@@ -15,6 +15,8 @@ export type Order = Database['public']['Tables']['orders']['Row']
 export type Transaction = Database['public']['Tables']['transactions']['Row']
 export type DepositRequest = Database['public']['Tables']['deposit_requests']['Row']
 export type AppSetting = Database['public']['Tables']['app_settings']['Row']
+export type ComboPackage = Database['public']['Tables']['combo_packages']['Row']
+export type ComboItem = Database['public']['Tables']['combo_items']['Row']
 
 export interface ServiceWithCategory extends Service {
   categories: Category | null
@@ -40,6 +42,50 @@ export interface PlaceOrderResponse {
   success: boolean
   order_id?: string
   exobooster_order_id?: number
+  error?: string
+}
+
+// ── Algorithm Booster (combo deals) ──────────────────────────
+export const COMBO_COMPONENTS = ['followers', 'views', 'likes', 'shares', 'saves'] as const
+export type ComboComponent = typeof COMBO_COMPONENTS[number]
+
+// Components delivered to a profile link; everything else uses a post link
+export const PROFILE_LINK_COMPONENTS: ReadonlySet<ComboComponent> = new Set<ComboComponent>(['followers'])
+
+export const COMBO_COMPONENT_LABELS: Record<ComboComponent, string> = {
+  followers: 'Followers',
+  views: 'Views',
+  likes: 'Likes',
+  shares: 'Shares',
+  saves: 'Saves',
+}
+
+export interface ComboItemWithService extends ComboItem {
+  services: Pick<Service, 'id' | 'name' | 'type' | 'rate' | 'min_quantity' | 'max_quantity'> | null
+}
+
+export interface ComboWithItems extends ComboPackage {
+  combo_items: ComboItemWithService[]
+}
+
+export interface PlaceComboPayload {
+  combo_id: string
+  profile_link?: string
+  post_link?: string
+}
+
+export interface ComboOrderResult {
+  component: string
+  order_id: string | null
+  exobooster_order_id: number | null
+  status: string
+  error?: string
+}
+
+export interface PlaceComboResponse {
+  success?: boolean
+  combo_group_id?: string
+  results?: ComboOrderResult[]
   error?: string
 }
 
